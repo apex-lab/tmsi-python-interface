@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,24 +13,34 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
 
-TMSiSDK: SAGA Device Interface 
+/**
+ * @file ${saga_device.py} 
+ * @brief SAGA Device Interface 
+ *
+ */
+
 
 '''
-import sys
+
+import os
 
 from .saga_types import *
 from ...error import TMSiError, TMSiErrorCode
 from ...device import Device, DeviceChannel, ChannelType, MeasurementType, \
-                      DeviceInfo, DeviceState, DeviceStatus, DeviceSensor
-from .TMSi_Device_API import *
+                      DeviceInfo, DeviceState, DeviceStatus, DeviceSensor, DeviceInterfaceType
+if os.getenv("ENVIRONMENT") == "TEST":
+    # do not load the dll
+    print("Test environment recognized. Dll is not going to be loaded.")
+else:
+    from .TMSi_Device_API import *
 
 import array
 from copy import copy,deepcopy
@@ -70,16 +80,19 @@ class SagaDevice(Device):
 						  This might be 'docked', 'optical' or 'wifi'
     """
 
-    def __init__(self, ds_interface, dr_interface):
+    stream_stop = 0
+    stream_start = 1
+    
+    def __init__(self, ds_interface, dr_interface, idx = -1):
         if (_tmsi_sdk == None):
             initialize()
         self._info = SagaInfo(ds_interface, dr_interface)
         self._config = SagaConfig()
         self._channels = [] # Active channel list
         self._imp_channels = [] # Impedance channel list
-        self._id = -1
+        self._id = _device_info_list[idx].id
         self._device_handle = DeviceHandle(0) #TMSiDeviceHandle
-        self._idx_device_list_info = -1;
+        self._idx_device_list_info = idx;
         self._last_error_code = TMSiDeviceRetVal.TMSI_OK
         self._sampling_thread = None
         self._measurement_type = MeasurementType.normal
@@ -124,7 +137,7 @@ class SagaDevice(Device):
                                           ch.sensor.name,
                                           ch.sensor.unit_name,
                                           ch.sensor.exp)
-                dev_ch = DeviceChannel(ch.type, ch.sample_rate, ch.alt_name, ch.unit_name, (ch.chan_divider != -1), sensor)
+                dev_ch = DeviceChannel(ch.type, ch.sample_rate, ch.alt_name, ch.unit_name, (ch.chan_divider != -1), ch.bandwidth, sensor)
                 chan_list.append(dev_ch)
         return chan_list
 
@@ -210,56 +223,47 @@ class SagaDevice(Device):
     def open(self):
         """ Opens the connection to the device.
 
-            The open-function will first initiate a discovery on attached systems to the PC
-            based on the interface-types which were registered upon the creation of the Device-object.
-
-            A connection will be established with the first available system.
+            A connection will be established with the available system.
 
             The functionailty a device offers will only be available when a connection
             to the system has been established.
         """
-        idx_device_list_info = -1
-
-        # Check if the local device-list contains an available device for opening
-        for i in range (_MAX_NUM_DEVICES):
-            if (_device_info_list[i].ds_interface == self.info.ds_interface) and (_device_info_list[i].dr_interface == self.info.dr_interface):
-                if (_device_info_list[i].state != DeviceState.connected):
-                    idx_device_list_info = i
-                else:
-                    idx_device_list_info = _MAX_NUM_DEVICES
-
-        # Execute a device-discovery if the local device-list does not contain any device
-        # with the devices' given interfaces (DS/DR)
-        if (idx_device_list_info == -1):
-            _discover(self.info.ds_interface, self.info.dr_interface)
-            for i in range (_MAX_NUM_DEVICES):
-                if (_device_info_list[i].state != DeviceState.connected) and (_device_info_list[i].ds_interface == self.info.ds_interface) and (_device_info_list[i].dr_interface == self.info.dr_interface):
-                    idx_device_list_info = i
-                    break
-
-        if (idx_device_list_info != -1) and ((idx_device_list_info != _MAX_NUM_DEVICES)):
+        if (self._id != SagaConst.TMSI_DEVICE_ID_NONE):
             # A device is found. Open the connection and adapt the information of the opened device
-            self._last_error_code = _tmsi_sdk.TMSiOpenDevice(pointer(self._device_handle), _device_info_list[idx_device_list_info].id, self.info.dr_interface.value)
+            self._last_error_code = _tmsi_sdk.TMSiOpenDevice(pointer(self._device_handle), self._id, self.info.dr_interface.value)
             if (self._last_error_code == TMSiDeviceRetVal.TMSI_DS_DEVICE_ALREADY_OPEN):
                 # The found device is available but in it's open-state: Close and re-open the connection
                 self._last_error_code = _tmsi_sdk.TMSiCloseDevice(self._device_handle)
-                self._last_error_code = _tmsi_sdk.TMSiOpenDevice(pointer(self._device_handle), _device_info_list[idx_device_list_info].id, self.info.dr_interface.value)
+                self._last_error_code = _tmsi_sdk.TMSiOpenDevice(pointer(self._device_handle), self._id, self.info.dr_interface.value)
 
             if (self._last_error_code == TMSiDeviceRetVal.TMSI_OK):
                 # The device is opened succesfully. Update the device information.
-                self._id = self._device_handle.value
-                _device_info_list[idx_device_list_info].state = DeviceState.connected
+                _device_info_list[self._idx_device_list_info].state = DeviceState.connected
 
-                self._idx_device_list_info = idx_device_list_info
                 self._info.state = DeviceState.connected
-                self._info.id = _device_info_list[idx_device_list_info].id;
-                self._info.ds_interface = _device_info_list[idx_device_list_info].ds_interface
-                self._info.dr_interface = _device_info_list[idx_device_list_info].dr_interface
-                self._info.ds_serial_number = _device_info_list[idx_device_list_info].ds_serial_number
-                self._info.dr_serial_number = _device_info_list[idx_device_list_info].dr_serial_number
+                self._info.id = self._id
+                self._info.ds_interface = _device_info_list[self._idx_device_list_info].ds_interface
+                self._info.dr_interface = _device_info_list[self._idx_device_list_info].dr_interface
+                self._info.ds_serial_number = _device_info_list[self._idx_device_list_info].ds_serial_number
+                self._info.dr_serial_number = _device_info_list[self._idx_device_list_info].dr_serial_number
 
                 # Read the device's configuration
                 self.__read_config_from_device()
+                
+                _recordings_list = self.get_device_storage_list()
+                if _recordings_list:
+                    warnings.warn("\n\n!!! \nThere is/are recordings stored on the onboard memory. Changing the configuration will clear the device's SD card!\nDo you want to continue? ('yes'/'y' continue, all others abort opening)\n!!!\n", stacklevel = 1)
+                    abort = input('Continue?\n')
+                    
+                    if abort.lower() == 'yes' or abort.lower() == 'y':
+                        pass
+                    else:
+                        raise TMSiError(TMSiErrorCode.general_error)
+                
+                if self.info.dr_interface == DeviceInterfaceType.wifi:
+                    bandwidth = self.get_current_bandwidth()
+                    if bandwidth > self.config._interface_bandwidth:
+                        warnings.warn('\n\n!!! \nThe maximum Wi-Fi bandwidth is exceeded. Please change the device configuration by disabling channels or altering the sample rate(s).\n!!!\n', stacklevel = 1)
 
             else:
                 raise TMSiError(TMSiErrorCode.device_error)
@@ -294,6 +298,10 @@ class SagaDevice(Device):
         if (self._info.state != DeviceState.connected):
             raise TMSiError(TMSiErrorCode.device_not_connected)
 
+        if self.get_current_bandwidth() > self.config.interface_bandwidth:
+            print('\n\nA measurement could not be started.\nThe maximum Wi-Fi bandwidth is exceeded. Please change the device configuration by disabling channels or altering the sample rate(s).\n\n')
+            raise TMSiError(TMSiErrorCode.api_invalid_command)
+            
         self._measurement_type = measurement_type
         _tmsi_sdk.TMSiResetDeviceDataBuffer(self._device_handle)
 
@@ -304,7 +312,7 @@ class SagaDevice(Device):
             self._sampling_thread.initialize(self._device_handle, self._channels, True)
         else:
             self._sampling_thread.initialize(self._device_handle, self._imp_channels, False)
-            
+
         self._conversion_thread = _ConversionThread(sampling_thread = self._sampling_thread)
 
         self._sampling_thread.start()
@@ -403,7 +411,6 @@ class SagaDevice(Device):
         root.withdraw()
         messagebox.showwarning("Factory Reset", message)
 
-
     def save_config(self, filename):
         """ Saves the current device configuration to file.
 
@@ -458,6 +465,253 @@ class SagaDevice(Device):
         """
         self.__read_config_from_device()
 
+    def download_recording_file(self, file_id, verbosity = True):
+        """download the file requested from the device
+
+        :param file_id: ID of the file wanted to be downloaded
+        :type file_id: string
+        :param verbosity: print the download percentage, defaults to True
+        :type verbosity: bool, optional
+        """
+        self.start_download_recording_file(file_id)
+
+        while True:
+            download_percentage = self.monitor_download_recording_file()
+            if verbosity:
+                print('\rProgress: % 0.1f %%' %(download_percentage), end="\r")
+            if download_percentage >= 100:
+                break
+            time.sleep(0.1)
+        
+        self.stop_download_recording_file(file_id)
+
+    def start_download_recording_file(self, file_id):
+        """ Starts the download stream from the device of the file requested
+
+        Args:
+            file_id : ID of the file wanted to be downloaded
+        """
+        # Only allow one measurement at the same time
+        if (self._info.state == DeviceState.sampling):
+            raise TMSiError(TMSiErrorCode.api_invalid_command)
+        if (self._info.state != DeviceState.connected):
+            raise TMSiError(TMSiErrorCode.device_not_connected)
+
+        _tmsi_sdk.TMSiResetDeviceDataBuffer(self._device_handle)
+
+        # Create and start the sampling-thread to capture and process incoming measurement-data,
+        # For a normal measurement sample_conversion must be applied
+        self._sampling_thread = _SamplingThread(name='producer-' + str(self._device_handle.value))
+        self._sampling_thread.initialize(self._device_handle, self._channels, True)
+            
+        self._conversion_thread = _ConversionThread(sampling_thread = self._sampling_thread)
+
+        # Request to stop the downstream so that we can read the details of the recording
+        recording_metadata = TMSiDevRecDetails()
+        impedance_report_list = (TMSiDevImpReport*100)()
+        impedance_report_list_len = 100
+
+        self._last_error_code = _tmsi_sdk.TMSiGetRecordingFile(
+            self._device_handle,
+            file_id,
+            SagaDevice.stream_stop,
+            pointer(recording_metadata),
+            pointer(impedance_report_list),
+            impedance_report_list_len)
+
+        self._sampling_thread.download_samples_limit = recording_metadata.NoOfSamples
+        self._sampling_thread.downloaded_samples = 0
+        self._sampling_thread.download_percentage = 0
+
+        self._last_error_code = _tmsi_sdk.TMSiGetRecordingFile(
+            self._device_handle,
+            file_id,
+            SagaDevice.stream_start,
+            pointer(recording_metadata),
+            pointer(impedance_report_list),
+            impedance_report_list_len)
+
+        if (self._last_error_code == TMSiDeviceRetVal.TMSI_OK.value):
+            self._info.state = DeviceState.sampling
+        else :
+            # Measurement could not be started. Stop the sampling-thread and report error.
+            self._sampling_thread.stop()
+            raise TMSiError(TMSiErrorCode.device_error)
+
+        self._sampling_thread.start()
+        self._conversion_thread.start()
+        
+    def monitor_download_recording_file(self):
+        return self._sampling_thread.download_percentage
+
+    def stop_download_recording_file(self, file_id):
+        """ Stops the download stream from the device of the file requested
+
+        Args:
+            file_id : ID of the file wanted to be downloaded
+        """
+        if (self._info.state != DeviceState.sampling):
+            raise TMSiError(TMSiErrorCode.api_invalid_command)
+
+        recording_metadata = TMSiDevRecDetails()
+        impedance_report_list = (TMSiDevImpReport*100)()
+        impedance_report_list_len = 100
+
+        self._last_error_code = _tmsi_sdk.TMSiGetRecordingFile(
+            self._device_handle,
+            file_id,
+            SagaDevice.stream_stop,
+            pointer(recording_metadata),
+            pointer(impedance_report_list),
+            impedance_report_list_len)
+
+        self._sampling_thread.stop()
+        self._conversion_thread.stop()
+
+        self._info.state = DeviceState.connected
+    
+    def get_device_memory_configuration(self):
+        return self._get_device_amb_config()
+
+    def set_device_recording_button(self, prefix_name=None):
+        """enable recording button to save on internal memory
+
+        :param prefix_name: prefix name for the files, defaults to None
+        :type prefix_name: string, optional
+        """
+        card_config_interface_bandwidth = 2 # MBit/s
+        # Check whether the bandwidth does not exceed 2 Mbit/s
+        if self.get_current_bandwidth() > card_config_interface_bandwidth:
+            print('\n\nButton start could not be enabled.\nThe maximum bandwidth (2Mbit/s) is exceeded. Please change the device configuration by disabling channels or altering the sample rate(s).\n\n')
+            raise TMSiError(TMSiErrorCode.api_invalid_command)
+        
+        device_amb_conf = self.get_device_memory_configuration()
+        device_amb_conf.StartControl = 8
+        device_amb_conf.EndControl = 0
+        if prefix_name is not None:
+            max_len = len(prefix_name)
+        if max_len>16:
+            max_len = 16
+        prefix_name = bytearray(prefix_name, 'utf-8')
+        name = bytearray(16)
+        name[:max_len] = prefix_name[:max_len]
+        device_amb_conf.PrefixFileName[:] = name
+        self._last_error_code = self._set_device_amb_config(device_amb_conf)
+    
+    def set_device_backup_logging(self, prefix_name=None):
+        """enable backup logging to save on internal memory every time a recording is performed
+
+        :param prefix_name: prefix name for the files, defaults to None
+        :type prefix_name: string, optional
+        """
+        device_amb_conf = self.get_device_memory_configuration()
+        device_amb_conf.StartControl = 16
+        device_amb_conf.EndControl = 0
+        if prefix_name is not None:
+            max_len = len(prefix_name)
+        if max_len>16:
+            max_len = 16
+        prefix_name = bytearray(prefix_name, 'utf-8')
+        name = bytearray(16)
+        name[:max_len] = prefix_name[:max_len]
+        device_amb_conf.PrefixFileName[:] = name
+        self._last_error_code = self._set_device_amb_config(device_amb_conf)
+
+    def set_device_backup_disabled(self):
+        """disable backup logging"""
+        device_amb_conf = self.get_device_memory_configuration()
+        device_amb_conf.StartControl = 0
+        self._last_error_code = self._set_device_amb_config(device_amb_conf)
+    
+    def _get_device_amb_config(self):
+        """
+        Gets the configuration of the flash memory on the SAGA
+        
+        :raise TMSiErrorCode.device_error: If the get configuration fails.
+        :return: The configuration structure.
+        :rtype: TMSiDevRecCfg
+        
+        """
+        device_amb_cfg = TMSiDevRecCfg()
+        self._last_error_code = _tmsi_sdk.TMSiGetDeviceAmbConfig(
+            self._device_handle,
+            pointer(device_amb_cfg)
+        )
+        if (self._last_error_code == TMSiDeviceRetVal.TMSI_OK.value):
+            return device_amb_cfg
+        else:
+            raise TMSiError(TMSiErrorCode.device_error)
+    
+    def _set_device_amb_config(self, cfg):
+        """
+        Sets the configuration of the flash memory on the SAGA
+        
+        :param cfg: configuration to send to the SAGA.
+        :type cfg: TMSiDevRecCfg
+        :raise TMSiErrorCode.device_error: If the set configuration fails.
+        :return: TMSiDeviceRetVal.TMSI_OK
+        :rtype: TMSiDeviceRetVal
+        
+        """
+        self._last_error_code = _tmsi_sdk.TMSiSetDeviceAmbConfig(
+            self._device_handle,
+            pointer(cfg)
+        )
+        if (self._last_error_code == TMSiDeviceRetVal.TMSI_OK.value):
+            return TMSiDeviceRetVal.TMSI_OK
+        else:
+            raise TMSiError(TMSiErrorCode.device_error)
+
+    def get_device_storage_list(self):
+        """
+        Returns the list of files currently available on the SAGA device
+        
+        :raise TMSiErrorCode.device_error: If the get storage list fails.
+        :return: A list of available recording present on the Data Recorder.
+        :rtype: TMSiDevRecList
+        
+        """
+        device_config = TMSiDevGetConfig()
+        device_channel_list = (TMSiDevChDesc * self._config.num_channels)()
+        self._last_error_code = _tmsi_sdk.TMSiGetDeviceConfig(
+            self._device_handle, 
+            pointer(device_config), 
+            pointer(device_channel_list), 
+            self._config.num_channels)
+        if (self._last_error_code != TMSiDeviceRetVal.TMSI_OK):
+            raise TMSiError(TMSiErrorCode.device_error)
+
+        available_recs = device_config.AvailableRecordings
+        recordings_list = (TMSiDevRecList*available_recs)()
+        recordings_len = c_ulong()
+        recordings_dict = {}
+        self._last_error_code = _tmsi_sdk.TMSiGetDeviceStorageList(
+            self._device_handle, 
+            pointer(recordings_list), available_recs, pointer(recordings_len))
+        if (self._last_error_code == TMSiDeviceRetVal.TMSI_OK):
+            for recording in recordings_list:
+                recordings_dict[recording.RecFileID] = recording.RecFileName
+            return recordings_dict
+        else:
+            raise TMSiError(TMSiErrorCode.device_error)
+            
+            
+    def get_current_bandwidth(self):
+        """
+        Returns the bandwidth (in MBits/sec) in use with the current device 
+        configuration
+        """
+        
+        ch_bandwidth = 0
+        ch_bandwidth = sum([ch_bandwidth + ch.bandwidth for ch in self.channels])
+        
+        # Get the used bandwidth in 
+        used_bandwidth = (80 * self.config.get_sample_rate(ChannelType.all_types) + 
+                          ch_bandwidth) / 1e6
+        self._used_bandwidth = used_bandwidth
+        
+        return used_bandwidth
+    
     def _update_config(self):
         # Upload the configuration to the device and always download it again
         # to certify that sdk-configuration and device-configuration keep in sync
@@ -491,6 +745,7 @@ class SagaDevice(Device):
                 self._config._dr_sync_out_duty_cycle = device_config.DRSyncOutDutyCycl
                 self._config._repair_logging = device_config.RepairLogging
                 self._config._num_sensors = device_config.NrOfSensors
+                self._config._interface_bandwidth = device_config.InterFaceBandWidth
 
                 for i in range(self._config.num_channels):
                     channel = SagaChannel()
@@ -506,6 +761,7 @@ class SagaDevice(Device):
                             self._config._sample_rates[channel.type.value].sample_rate = channel.sample_rate
                             self._config._sample_rates[channel.type.value].chan_divider = channel.chan_divider
                     channel.imp_divider = device_channel_list[i].ImpDivider
+                    channel.bandwidth = device_channel_list[i].ChannelBandWidth
                     channel.exp = device_channel_list[i].Exp
                     channel.unit_name = device_channel_list[i].UnitName.decode('windows-1252')
                     channel.def_name = device_channel_list[i].DefChanName.decode('windows-1252')
@@ -692,6 +948,21 @@ def _discover(ds_interface, dr_interface):
                 if _num_retries == 0:
                     raise TMSiError(TMSiErrorCode.no_devices_found)
 
+
+def discover(ds_interface, dr_interface):
+    discoveryList = []
+
+    if (_tmsi_sdk == None):
+        initialize()
+
+    _discover(ds_interface, dr_interface)
+    for idx in range (_MAX_NUM_DEVICES):
+        if (_device_info_list[idx].id != SagaConst.TMSI_DEVICE_ID_NONE):
+            discoveryList.append(SagaDevice(ds_interface, dr_interface, idx))
+
+    return discoveryList
+
+
 class _SamplingThread(threading.Thread):
     def __init__(self, name):
         super(_SamplingThread,self).__init__()
@@ -716,7 +987,16 @@ class _SamplingThread(threading.Thread):
                 if self.retrieved_sample_sets.value > 0:
                     self.conversion_queue.put((deepcopy(self.sample_data_buffer), self.retrieved_sample_sets.value))
                     
-            time.sleep(0.100)
+            if hasattr(self, "download_samples_limit"):
+                self.downloaded_samples += self.retrieved_sample_sets.value
+                # print("added {} downloaded {} expected {}".format(
+                #         self.retrieved_sample_sets.value, 
+                #         self.downloaded_samples,
+                #         self.download_samples_limit))
+                self.download_percentage = self.downloaded_samples * 100.0 / self.download_samples_limit
+                if self.downloaded_samples >= self.download_samples_limit:
+                    break
+            time.sleep(0.050)
             
         print(self.name, " ready")
         

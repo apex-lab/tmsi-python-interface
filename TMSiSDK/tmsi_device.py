@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,25 +13,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
 
-TMSiSDK : Starting module to instantiate <Device>-objects of TMSi measurement systems
+/**
+ * @file ${tmsi_device.py} 
+ * @brief Starting module to instantiate <Device>-objects of TMSi measurement 
+ * systems.
+ *
+ */
+
 
 '''
 
 from enum import Enum
 
-from .error import TMSiError, TMSiErrorCode
-from .device import DeviceInterfaceType
-from .devices.saga.saga_device import SagaDevice
+from TMSiSDK.error import TMSiError, TMSiErrorCode
+from TMSiSDK.device import DeviceInterfaceType
+from TMSiSDK.devices.saga import saga_device
+from TMSiSDK.devices.saga.saga_device import SagaDevice
 
-from . import settings
+from TMSiSDK import settings
 
 class DeviceType(Enum):
     none = 0
@@ -70,3 +77,31 @@ def create(dev_type, dr_interface, ds_interface = DeviceInterfaceType.none):
         raise TMSiError(TMSiErrorCode.api_incorrect_argument)
 
     return dev
+
+def discover(dev_type, dr_interface, ds_interface = DeviceInterfaceType.none):
+    """Creates a list with Device-objects to interface with found TMSI measurement systems.
+
+    Args:
+        dev_type : <DeviceType> The measurement-system type.
+                   Momentarily only the SAGA system is supported.
+
+        dr_interface : <DeviceInterfaceType> The interface-type between the
+                       data-recorder and docking-station (if the system exists
+                       out of a DS and DR like the SAGA-system) or a PC.
+                       The default interface-type = DeviceInterfaceType.docked
+
+        ds_interface : <DeviceInterfaceType> The interface-type between the
+                       docking station and PC.
+                       The default interface-type = DeviceInterfaceType.usb
+
+    Returns:
+        <Device[]> An array with objects of the system-implementation of the
+        <Device-class>-interface. With these object one can interface with the
+        attached systems.
+    """
+    discoveryList = []
+
+    if (dev_type == DeviceType.saga):
+        discoveryList = saga_device.discover(ds_interface, dr_interface)
+
+    return discoveryList

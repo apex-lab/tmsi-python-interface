@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
 
-TMSiSDK: Main Device Interface
+/**
+ * @file ${device.py} 
+ * @brief Main Device Interface
+ *
+ */
+
 
 '''
 
@@ -75,6 +80,9 @@ class DeviceChannel:
         type : 'ChannelType' Indicates the group-type of a channel.
 
         sample_rate : 'int' The curring sampling rate of the channel during a 'normal' measurement.
+        
+        bandwidth : 'int'  Bandwidth (in bits/s) required for transfer from DR to DS, 
+                           used by bandwidth manager in application software.
 
         name : 'string' The name of the channel.
 
@@ -86,13 +94,14 @@ class DeviceChannel:
               are read-only.
     """
 
-    def __init__(self, type, sample_rate, name, unit_name, enabled, sensor = None):
+    def __init__(self, type, sample_rate, name, unit_name, enabled, bandwidth = 0, sensor = None):
         self.__type = type
         self.__sample_rate = sample_rate
         self.__unit_name = unit_name
         self.__name = name
         self.__enabled = enabled
         self.__sensor = sensor
+        self.__bandwidth = bandwidth
 
     @property
     def type(self):
@@ -103,6 +112,11 @@ class DeviceChannel:
     def sample_rate(self):
         """'int' The curring sampling rate of the channel during a 'normal' measurement."""
         return(self.__sample_rate)
+        
+    @property
+    def bandwidth(self):
+        """'int' Bandwidth (in bits/s) required for transfer from DR to DS, used by bandwidth manager in application software."""
+        return(self.__bandwidth)
 
     @property
     def name(self):
@@ -377,6 +391,11 @@ class DeviceConfig:
             interface_type: 'DeviceInterfaceType' The interface type that needs 
             to be updated.
         """
+        pass
+        
+    @property
+    def interface_bandwidth(self):
+        """'int' Data bandwidth in Mbits/s for current interface."""
         pass
     
     @property

@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
+
+/**
+ * @file ${__init__.py} 
+ * @brief Initialisation of the devices directory.
+ *
+ */
+
 
 '''
 

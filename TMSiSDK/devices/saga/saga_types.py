@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
 
-TMSiSDK: SAGA Device Types 
+/**
+ * @file ${saga_types.py} 
+ * @brief SAGA Device Types.
+ *
+ */
+
 
 '''
+
 from ...device import DeviceInterfaceType, DeviceState, DeviceConfig, ChannelType, DeviceChannel, DeviceSensor, ReferenceMethod, ReferenceSwitch
 
 _TMSI_DEVICE_ID_NONE = 0xFFFF
@@ -67,6 +73,7 @@ class SagaConfig(DeviceConfig):
         self._channels = [] # Total channel list : active and inactive
         self._sample_rates = [] # List with sample_rate per channel-type
         self._num_sensors = 0 # Number of sensors
+        self._interface_bandwidth = 0; # Data bandwidth in Mbits/s for current interface.
         for chan_type in ChannelType:
             self._sample_rates.append(SagaSampleRate(chan_type))
 
@@ -313,7 +320,16 @@ class SagaConfig(DeviceConfig):
                 self._dr_sync_out_duty_cycle=duty_cycle*10
                 
         if (self._parent != None):
-            self._parent._update_config()  
+            self._parent._update_config()
+
+    @property
+    def interface_bandwidth(self):
+        return self._interface_bandwidth
+        
+    @interface_bandwidth.setter
+    def interface_bandwidth(self, bandwidth):
+        """Sets the data bandwidth in Mbits/s for current interface."""
+        self._interface_bandwidth=bandwidth      
 
 class SagaSensor():
     """ <SagaSensor> represents the sensor-data of a channel. It has the next properties:

@@ -359,17 +359,17 @@
     <Channel>
       <ChanNr>69</ChanNr>
       <ChanDivider>-1</ChanDivider>
-      <AltChanName>X</AltChanName>
+      <AltChanName>AUX 1-1</AltChanName>
     </Channel>
     <Channel>
       <ChanNr>70</ChanNr>
       <ChanDivider>-1</ChanDivider>
-      <AltChanName>Y</AltChanName>
+      <AltChanName>AUX 1-2</AltChanName>
     </Channel>
     <Channel>
       <ChanNr>71</ChanNr>
       <ChanDivider>-1</ChanDivider>
-      <AltChanName>Z</AltChanName>
+      <AltChanName>AUX 1-3</AltChanName>
     </Channel>
     <Channel>
       <ChanNr>72</ChanNr>

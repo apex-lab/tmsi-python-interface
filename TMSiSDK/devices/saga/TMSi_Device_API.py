@@ -1,5 +1,5 @@
 '''
-Copyright 2021 Twente Medical Systems international B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-#######  #     #   #####   #  ######      #     #
-   #     ##   ##  #        #  #     #     #     #
-   #     # # # #  #        #  #     #     #     #
-   #     #  #  #   #####   #  ######       #   #
-   #     #     #        #  #  #     #      #   #
-   #     #     #        #  #  #     #       # #
-   #     #     #  #####    #  ######   #     #     #
+#######  #     #   #####   #
+   #     ##   ##  #        
+   #     # # # #  #        #
+   #     #  #  #   #####   #
+   #     #     #        #  #
+   #     #     #        #  #
+   #     #     #  #####    #
 
-TMSiSDK: SAGA Device API protocol definitions VERSION 1.4
+/**
+ * @file ${TMSi_Device_API.py} 
+ * @brief SAGA Device API protocol definitions VERSION 1.4
+ *
+ */
+
 
 '''
 
@@ -30,6 +35,7 @@ from sys import platform
 import os
 import pdb
 from array import *
+from ...error import TMSiError, TMSiErrorCode
 
 from enum import Enum, unique
 
@@ -60,6 +66,10 @@ elif platform == "win32": # Windows
         if name in files:
             result = os.path.join(root, name)
             break
+    if not result:
+        print('\nCould not find necessary device driver!\n')
+        raise TMSiError(TMSiErrorCode.api_no_driver)
+        
     so_name = os.path.abspath(result)
 
     print(so_name)
@@ -539,7 +549,7 @@ class TMSiDevChCal(Structure):
     _pack_=2
     _fields_ = [
         ("ChanNr", c_uint),             # Which channel is this configure for.
-        ("ChanGianCorr", c_float),      # A float value for the Gain calibration.
+        ("ChanGainCorr", c_float),      # A float value for the Gain calibration.
         ("ChanOffsetCorr", c_float),    # A float value for the Offset calibration.
     ]
 
@@ -1086,7 +1096,10 @@ TMSiResetDeviceDataBuffer.argtype = [c_void_p]
 # @li TMSI_OK Ok, if response received successful.
 # @li Any TMSI_DS*, TMSI_DR*, TMSI_DLL error received.
 #---
-#TMSIDEVICEDLL_API TMSiDeviceRetVal TMSiGetDeviceStorageList(void* TMSiDeviceHandle, TMSiDevRecListType* RecordingsList, int32_t RecordingsListLen, int32_t* RetRecordingListLen);
+
+TMSiGetDeviceStorageList = SagaSDK.TMSiGetDeviceStorageList
+TMSiGetDeviceStorageList.restype = TMSiDeviceRetVal
+TMSiGetDeviceStorageList.argtype = [c_void_p, POINTER(TMSiDevRecList), c_uint, POINTER(c_uint)]
 
 #---
 # @details This command is used to get a recorded file from the data recorder
