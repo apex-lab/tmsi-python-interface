@@ -22,10 +22,8 @@ limitations under the License.
    #     #     #  #####    #
 
 /**
- * @file ${example_synchronise_xdf.py} 
- * @brief This function shows how to synchronise two data streams 
- * in an .xdf file, that has been collected with the 
- * LSL-based LabRecorder application.
+ * @file ${example_factory_defaults.py} 
+ * @brief This example shows how to initiate a factory reset of the APEX device.
  *
  */
 
@@ -39,18 +37,33 @@ modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
 
-from TMSiProcessing.synchronisation import TMSiSynchronisation
 
-# Define the input and output file
-input_file = join(measurements_dir, "your_input_file.xdf")
-output_file = join(measurements_dir, "your_output_file.xdf")
+from apex_sdk.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from apex_sdk.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 
-# Initialise the synchronisation tool by passing the desired input file and output file
-sync_tool = TMSiSynchronisation(files_in = [input_file], 
-                                output_file = output_file)
 
-# Select which of the data streams is to be handled as the master stream. 
-# Implicitly, the other stream(s) are considered to be a slave, on which time axis
-# correction is performed. 
-sync_tool.synchronize_data(master_signal = 1)
+try:
+    # Execute a device discovery. This returns a list of device-objects for every discovered device.
+    TMSiSDK().discover(DeviceType.apex, DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list()
 
+    if (len(discoveryList) > 0):
+        # Get the handle to the first discovered device.
+        dev = discoveryList[0]
+        
+        # Open a connection to the APEX-system
+        dev.open()
+        
+        # Initiate a factory reset, which restores the default configuration on APEX
+        dev.reset_to_factory_default()
+        
+        # Close the connection to the device
+        dev.close()
+    
+except TMSiError as e:
+    print(e)
+        
+finally:
+    # Close the connection to the device when the device is opened
+    if dev.get_device_state() == DeviceState.connected:
+        dev.close()

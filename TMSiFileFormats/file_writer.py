@@ -52,11 +52,11 @@ class FileWriter:
             filename : <string> The path and name of the file, into which the
             measurement-data must be written.
     """
-    def __init__(self, data_format_type, filename, add_ch_locs=False):
+    def __init__(self, data_format_type, filename, add_ch_locs=False, download = False):
         if (data_format_type == FileFormat.poly5):
             from .file_formats.poly5_file_writer import Poly5Writer
             self._data_format_type = data_format_type
-            self._file_writer = Poly5Writer(filename)
+            self._file_writer = Poly5Writer(filename, download)
         elif (data_format_type == FileFormat.xdf):
             from .file_formats.xdf_file_writer import XdfWriter
             self._data_format_type = data_format_type

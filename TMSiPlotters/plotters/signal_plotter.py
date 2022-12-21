@@ -30,14 +30,14 @@ limitations under the License.
 
 '''
 
-from PySide2 import  QtGui, QtCore
+from PySide2 import  QtGui, QtCore, QtWidgets
+from PySide2.QtCore import Qt
 import numpy as np
 import pyqtgraph as pg
 import time
 import queue
 from copy import copy
 import sys
-import json
 
 from os.path import join, dirname, realpath, normpath, exists
 
@@ -48,6 +48,10 @@ modules_dir = normpath(join(Plotter_dir, '../..')) # directory with all modules
 from TMSiSDK import tmsi_device
 from TMSiSDK import sample_data_server
 from TMSiSDK.device import DeviceInterfaceType, ChannelType
+
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+
 
 
 class SignalViewer():
@@ -69,69 +73,34 @@ class SignalViewer():
         
         # Set up UI and thread
         self.initUI()
+        self.live_impedance = False
+        if isinstance(self.device, TMSiDevice):
+            if self.device.get_device_sampling_config().LiveImpedance:
+                self.init_impedance_table()
+                self.live_impedance = True
         self.setupThread()
         
     def initUI(self):
         """ Method responsible for constructing the basic elements in the plot
         """
         # Set view settings
-        self.RealTimePlotWidget.setBackground('w')        
+        self.RealTimePlotWidget.setBackground('w')
         self.RealTimePlotWidget.window = self.RealTimePlotWidget.addPlot()
         self.RealTimePlotWidget.window.showGrid(x = True, y = True, alpha = 0.5)
         self.RealTimePlotWidget.window.setLabel('bottom', 'Time', units='sec')
         self.RealTimePlotWidget.window.getViewBox().invertY(True)
-        
-        if self.device.config.reference_method[0] == 'common':
-            self._chan_offset = 1
-        else:
-            self._chan_offset = 0
-        
-        # Get the HD-EMG conversion file
-        config_file = join(modules_dir, 'TMSiSDK','_resources','HD_EMG_grid_channel_configuration.json')
-        # Open the file if it exists, notify the user if it does not
-        if exists(config_file):
-            # Get the HD-EMG conversion table
-            with open(config_file) as json_file:
-                self.conversion_data = json.load(json_file)
-        else:
-            print("Couldn't load HD-EMG conversion file, using default channel ordering")
-            self.grid_type = 'none'
-        
-        # Reorder channels to grid ordering, insert alternative channels as well
-        if self.grid_type.casefold() == '32ch textile grid large'.casefold(): 
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['32ch textile grid large']['channel_conversion']) - (1-self._chan_offset)
-            if self._chan_offset:
-                self.channel_conversion_list = np.insert(self.channel_conversion_list, 0, 0)
-            self.channel_conversion_list = np.hstack((self.channel_conversion_list,
-                                                      np.arange(len(self.channel_conversion_list),
-                                                                len(self.device.channels), 
-                                                                dtype = int)))
-            
-        elif self.grid_type.casefold() == 'SAGA64 32ch textile grid large'.casefold():
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['SAGA64 32ch textile grid large']['channel_conversion']) - (1-self._chan_offset)
-            if self._chan_offset:
-                self.channel_conversion_list = np.insert(self.channel_conversion_list, 0, 0)
-            self.channel_conversion_list = np.hstack((self.channel_conversion_list,
-                                                      np.arange(len(self.channel_conversion_list),
-                                                                len(self.device.channels), 
-                                                                dtype = int)))
-            
-        elif self.grid_type.casefold() == '32ch textile grid small'.casefold():
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['32ch textile grid small']['channel_conversion']) - (1-self._chan_offset)
-            if self._chan_offset:
-                self.channel_conversion_list = np.insert(self.channel_conversion_list, 0, 0)
-
-        else:
-            self.channel_conversion_list = np.arange(0,len(self.device.channels), dtype = int)
+                
+        self.channel_conversion_list = self.gui_handle.active_channel_conversion_list
         
         # Configuration settings
         self.num_channels = np.size(self.gui_handle._channel_selection,0)
-        self.active_channels = np.size(self.device.channels,0)
+        if isinstance(self.device, TMSiDevice):
+            self.active_channels = np.size(self.device.get_device_channels(),0)
+            self.sample_rate = self.device.get_device_sampling_frequency()
+        else:
+            self.active_channels = np.size(self.device.channels,0)
+            self.sample_rate = self.device.config.get_sample_rate(ChannelType.counter)
         self.window_size = 5 # seconds
-        self.sample_rate = self.device.config.get_sample_rate(ChannelType.counter)
         
         self._downsampling_factor = int(self.sample_rate / 500)
 
@@ -140,27 +109,52 @@ class SignalViewer():
         # Dictionary used for storing the scaling factors
         self._plot_diff = [{'mean': 0, 'diff': 2**31 } for i in range(self.num_channels)]
         self._plot_diff[-1]['diff'] = 1
-        self._plot_diff[-1]['mean'] = 1024
+        if isinstance(self.device, TMSiDevice):
+            self._plot_diff[-1]['mean'] = 32
+        else:
+            self._plot_diff[-1]['mean'] = 1024
+        
+        if isinstance(self.device, TMSiDevice):
+            self.chs = [[i.get_channel_name(), i.get_channel_unit_name(), i.get_channel_type()] for i in self.device.get_device_active_channels()]        
         
         tick_list_left = [[]]
         # Create the first instance of the y-axis ticks
-        for i in range(self.num_channels):
-            for j in [-1, 0, 1]:
-                if i == self.num_channels - 1:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+        if isinstance(self.device, TMSiDevice):
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.gui_handle._channel_selection[i]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
-                else:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.channel_conversion_list[self.gui_handle._channel_selection[i]]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+            
+            # Display the unit name on the right-side y-axis
+            tick_list_right = [[(self._plot_offset*i, self.chs[self.gui_handle._channel_selection[i]][1]) for i in range(self.num_channels)]]
+        else:
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
-        
-        # Display the unit name on the right-side y-axis
-        tick_list_right = [[(self._plot_offset*i, self.device.channels[self.gui_handle._channel_selection[i]].unit_name) for i in range(self.num_channels)]]
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+            
+            # Display the unit name on the right-side y-axis
+            tick_list_right = [[(self._plot_offset*i, self.device.channels[self.gui_handle._channel_selection[i]].unit_name) for i in range(self.num_channels)]]
         
         # Write the ticks to the plot
         self.RealTimePlotWidget.window.getAxis('left').setTicks(tick_list_left)
@@ -189,9 +183,20 @@ class SignalViewer():
         self._buffer_size = 10 # seconds
         self.window_buffer = np.ones((self.active_channels, int(np.ceil(self.sample_rate*self._buffer_size)))) * np.nan
         self.samples_seen = 0
+    
+    def init_impedance_table(self):
+        self.gui_handle.table_live_impedance.setColumnCount(2)
+        self.gui_handle.table_live_impedance.setHorizontalHeaderLabels(["Name", "Impedance"])
+        self.gui_handle.table_live_impedance.setRowCount(len(self.chs)-5)
         
-        
-        
+        for i, channel in enumerate(self.chs):
+            if i < len(self.chs)-5:
+                alt_name = QtWidgets.QTableWidgetItem(self.chs[self.channel_conversion_list[i]][0])
+                alt_name.setFlags(Qt.ItemIsEnabled)
+                real = QtWidgets.QTableWidgetItem("kOhm")
+                real.setFlags(Qt.ItemIsEnabled)
+                self.gui_handle.table_live_impedance.setItem(i, 0, alt_name)
+                self.gui_handle.table_live_impedance.setItem(i, 1, real)            
         
     def _decrease_time_range(self):
         """ Method that decreases the amount of time that is displayed within the
@@ -273,20 +278,36 @@ class SignalViewer():
         # Update the list of ticks on the y-axis for all channels
         tick_list_left = [[]]
         
-        for i in range(self.num_channels):
-            for j in [-1, 0, 1]:
-                if i == self.num_channels - 1:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+        if isinstance(self.device, TMSiDevice):
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.gui_handle._channel_selection[i]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
-                else:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.channel_conversion_list[self.gui_handle._channel_selection[i]]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                     f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+        else:
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
         
         self.RealTimePlotWidget.window.getAxis('left').setTicks(tick_list_left)
         
@@ -364,20 +385,36 @@ class SignalViewer():
         # Update the list of ticks on the y-axis for all channels
         tick_list_left = [[]]
         
-        for i in range(self.num_channels):
-            for j in [-1, 0, 1]:
-                if i == self.num_channels - 1:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+        if isinstance(self.device, TMSiDevice):
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.gui_handle._channel_selection[i]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
-                else:
-                    if not bool(j):
-                        tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.chs[self.channel_conversion_list[self.gui_handle._channel_selection[i]]][0]: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+        else:
+            for i in range(self.num_channels):
+                for j in [-1, 0, 1]:
+                    if i == self.num_channels - 1:
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.gui_handle._channel_selection[i]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
                     else:
-                        tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
-                                                  f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
+                        if not bool(j):
+                            tick_list_left[0].append((int(self._plot_offset * i), f'{self.device.channels[self.channel_conversion_list[self.gui_handle._channel_selection[i]]].name: <25}' ))
+                        else:
+                            tick_list_left[0].append((int(self._plot_offset * i + -j * self._plot_offset / 3), 
+                                                      f'{ self._plot_diff[i]["mean"] + (self._plot_diff[i]["diff"] * j ) : .2g}') )
         
         self.RealTimePlotWidget.window.getAxis('left').setTicks(tick_list_left)
         
@@ -420,7 +457,7 @@ class SignalViewer():
         for i in range(np.size(self.gui_handle._checkboxes,0)):
             if self.gui_handle._checkboxes[i][1].value == ChannelType.UNI.value:
                 self.gui_handle._checkboxes[i][0].setChecked(False)
-                
+            
         
         # Call the update function (normally called by individual checkboxes)
         self._update_channel_display()
@@ -554,7 +591,7 @@ class SignalViewer():
                 
         
         # Call the update function (normally called by individual checkboxes)
-        self._update_channel_display()        
+        self._update_channel_display()
 
         
     @QtCore.Slot(object)
@@ -593,7 +630,7 @@ class SignalViewer():
         self.RealTimePlotWidget.window.getAxis('bottom').setTicks(bottom_ticks)
         
         # Ensure right amount of data points are plotted (window_size * sample_rate)
-        time_axis = np.arange(0, self.window_size, self._downsampling_factor/self.sample_rate)        
+        time_axis = np.arange(0, self.window_size, self._downsampling_factor/self.sample_rate)
         
         # Try to update the plot, due to user actions plotting might result in a warning
         # for that specific plot instance, hence the try-except statement
@@ -604,15 +641,29 @@ class SignalViewer():
                                       connect = np.logical_and(con[i,:], np.roll(con[i,:], -1)))
             
             # Update the ticks on the right side of the plot
-            tick_list_right = [[(int(self._plot_offset*i), f'{data[self.gui_handle._channel_selection[i],int(idx_final)]:< 10.2f} {self.device.channels[self.gui_handle._channel_selection[i]].unit_name}') \
-                                for i in range(self.num_channels)]]        
+            if isinstance(self.device, TMSiDevice):
+                tick_list_right = [[(int(self._plot_offset*i), f'{data[self.gui_handle._channel_selection[i],int(idx_final)]:< 10.2f} {self.chs[self.gui_handle._channel_selection[i]][1]}') \
+                                    for i in range(self.num_channels)]]
+            else:
+                tick_list_right = [[(int(self._plot_offset*i), f'{data[self.gui_handle._channel_selection[i],int(idx_final)]:< 10.2f} {self.device.channels[self.gui_handle._channel_selection[i]].unit_name}') \
+                                for i in range(self.num_channels)]]
             self.RealTimePlotWidget.window.getAxis('right').setTicks(tick_list_right)
         except Exception:
             pass
-        
+    
+    @QtCore.Slot(object)
+    def update_impedance_table(self, live_impedances):
+        for i, channel in enumerate(self.chs):
+            if i < len(self.chs) - 5:
+                real = QtWidgets.QTableWidgetItem(f'{live_impedances[i+1]["Re"]} kOhm')
+                real.setFlags(Qt.ItemIsEnabled)
+                self.gui_handle.table_live_impedance.setItem(i, 1, real)
+    
+    
     def setupThread(self):
         """ Method that initialises the sampling thread of the device
         """
+        
         # Create a Thread
         self.thread = QtCore.QThread()
         # Instantiate the Sampling class
@@ -627,13 +678,15 @@ class SignalViewer():
         else:
             self.thread.started.connect(self.worker.update_samples)
         self.worker.output.connect(self.update_plot)
-        
+        self.worker.output_impedance_table.connect(self.update_impedance_table)
+       
 
 class SamplingThread(QtCore.QObject):
     """ Class responsible for sampling and preparing data for the GUI window.
     """
     # Initialise the ouptut object
     output = QtCore.Signal(object)
+    output_impedance_table = QtCore.Signal(object)
     def __init__(self, main_class):
         """ Setting up the class' properties that were passed from the GUI thread
         """
@@ -650,16 +703,24 @@ class SamplingThread(QtCore.QObject):
         self.filter_app=main_class.filter_app
         self.channel_conversion_list = main_class.channel_conversion_list
         self.grid_type = main_class.grid_type
-        self._chan_offset = main_class._chan_offset
+        self.live_impedance = main_class.live_impedance
+        if self.live_impedance:
+            self._cycling_impedance = dict()
+            for index in range(1, len(main_class.chs) - 4):
+                self._cycling_impedance[index] = dict()
+                self._cycling_impedance[index]["Re"] = 1000
+                self._cycling_impedance[index]["Im"] = 1000
         
         # Register to filter_app or sample data server and start measurement
         if not self.filter_app:
             # Prepare Queue
             _QUEUE_SIZE = 1000
             self.q_sample_sets = queue.Queue(_QUEUE_SIZE)
-        
-            # Register the consumer to the sample data server
-            sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
+            if isinstance(self.device, TMSiDevice):
+                ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+            else:
+                # Register the consumer to the sample data server
+                sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
         
         
         # Set sampling to true
@@ -683,8 +744,6 @@ class SamplingThread(QtCore.QObject):
                 elif self.q_sample_sets.qsize() < 6:
                     lag = False
                 
-                # print(self.q_sample_sets.qsize())
-                
                 # Retrieve sample data from the sample_data_server queue
                 sd = self.q_sample_sets.get()
                 self.q_sample_sets.task_done()
@@ -699,11 +758,10 @@ class SamplingThread(QtCore.QObject):
                 
                 # Write sample data to the buffer
                 self.window_buffer[:,plot_indices[:-white_out]] = samples
+              
+                # Apply the conversion strategy
+                self.window_buffer[:, plot_indices[:-white_out]] = samples[self.channel_conversion_list,:]
                 
-                # If a measurement using a textile grid is done, apply the conversion strategy
-                if self.grid_type.casefold() == '32ch textile grid large'.casefold() or self.grid_type.casefold() == '32ch textile grid small'.casefold():
-                    self.window_buffer[self._chan_offset : len(self.channel_conversion_list), 
-                                       plot_indices[:-white_out]] = samples[self.channel_conversion_list,:]
                 self.window_buffer[:,plot_indices[-white_out:]] = np.nan
                 
                 # Update number of samples seen by the plotter
@@ -736,11 +794,16 @@ class SamplingThread(QtCore.QObject):
                         
                     # Output sample data
                     self.output.emit(plot_data)
-                
+                    
+                    # Update live impedance data
+                    if self.live_impedance:
+                        self.update_impedances(samples)
+                        self.output_impedance_table.emit(self._cycling_impedance)
+                        
                     # Pause the thread for a small time so that plot can be updated before receiving next data chunk
                     # Pause should be long enough to have the screen update itself
                     time.sleep(0.03)
-            
+           
     @QtCore.Slot()
     def update_filtered_samples(self): 
         """ Method that retrieves samples from the queue and processes the samples.
@@ -769,9 +832,8 @@ class SamplingThread(QtCore.QObject):
                 # Write sample data to the plot buffer
                 self.window_buffer[:,plot_indices[:-white_out]] = samples
                 
-                if self.grid_type.casefold() == '32ch textile grid large'.casefold() or self.grid_type.casefold() == '32ch textile grid small'.casefold():
-                    self.window_buffer[self._chan_offset : len(self.channel_conversion_list), 
-                                       plot_indices[:-white_out]] = samples[self.channel_conversion_list,:]
+                # Apply the conversion strategy
+                self.window_buffer[:, plot_indices[:-white_out]] = samples[self.channel_conversion_list,:]
                     
                 self.window_buffer[:,plot_indices[-white_out:]] = np.nan
                 
@@ -803,10 +865,28 @@ class SamplingThread(QtCore.QObject):
                         
                     # Output sample data
                     self.output.emit(plot_data)
-                
+                    
+                    # Update live impedance data
+                    if self.live_impedance:
+                        self.update_impedances(samples)
+                        self.output_impedance_table.emit(self._cycling_impedance)
+                        
                     # Pause the thread for a small time so that plot can be updated before receiving next data chunk
                     # Pause should be long enough to have the screen update itself
                     time.sleep(0.03)
+                    
+    def update_impedances(self, samples):
+        CYCL_IDX = len(samples[:,0]) - 5
+        for idx in range(len(samples[CYCL_IDX,:])):
+            index = int(samples[CYCL_IDX,idx]) + 1
+            if index in self._cycling_impedance:
+                self._cycling_impedance[index]["Re"] = samples[CYCL_IDX + 1,idx]
+                self._cycling_impedance[index]["Im"] = samples[CYCL_IDX + 2,idx]
+            else:
+                self._cycling_impedance[index] = dict()
+                self._cycling_impedance[index]["Re"] = samples[CYCL_IDX + 1,idx]
+                self._cycling_impedance[index]["Im"] = samples[CYCL_IDX + 2,idx]
+
             
     def stop(self):
         """ Method that is executed when the thread is terminated. 

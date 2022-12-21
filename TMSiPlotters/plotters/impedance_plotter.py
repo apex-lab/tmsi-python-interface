@@ -40,7 +40,7 @@ import pandas as pd
 import math
 import datetime
 import sys
-import json
+
 
 Plotter_dir = dirname(realpath(__file__)) # directory of this file
 measurements_dir = join(Plotter_dir, '../../measurements') # directory with all measurements
@@ -50,6 +50,10 @@ from TMSiSDK import tmsi_device
 from TMSiSDK import sample_data_server
 from TMSiSDK import sample_data
 from TMSiSDK.device import DeviceInterfaceType, MeasurementType
+
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+
 
 class ImpedanceViewer():
     """ Class that creates a GUI to display the impedance values in a gridded
@@ -68,7 +72,14 @@ class ImpedanceViewer():
         self.RealTimePlotWidget = self.gui_handle.RealTimePlotWidget
         
         self.grid_type = grid_type
+        self._disable_channels = []
         
+        # Number of impedance channels
+        if isinstance(self.device, TMSiDevice):
+            self.n_chan = len(self.device.get_device_impedance_channels())
+        else:
+            self.n_chan = len(self.device.imp_channels)
+       
         # Set up UI and thread
         self.initUI(layout)
         self.setupThread()
@@ -93,7 +104,7 @@ class ImpedanceViewer():
         if layout!='head': 
             self.RealTimePlotWidget.window.getViewBox().invertY(True)
             
-            if len(self.device.imp_channels) == 34:
+            if self.n_chan <= 34:
                 self.RealTimePlotWidget.window.setAspectLocked(lock=True, ratio = 0.6)
             else: 
                 self.RealTimePlotWidget.window.setAspectLocked(lock=True, ratio = 1)
@@ -103,8 +114,7 @@ class ImpedanceViewer():
         # Add viewbox for the list of values
         self.RealTimePlotWidget.vb_list = self.RealTimePlotWidget.addViewBox()
         self.RealTimePlotWidget.vb_list.setMaximumSize(500,150000)
-        
-
+    
         # Generate the legend by using dummy plots 
         self.legend_entries = []
         legend_spots = self._generate_legend()
@@ -133,8 +143,12 @@ class ImpedanceViewer():
         
         # Initialise the standard format for the different indicators
         self.spots = [{'pos': (0,0), 'size': 20, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                      for i in range(len(self.device.imp_channels))]
-            
+                          for i in range(self.n_chan)]
+
+        # Get channel names and units
+        if isinstance(self.device, TMSiDevice):
+            chs = [[i.get_channel_name(), i.get_channel_unit_name()] for i in self.device.get_device_impedance_channels()]
+    
         if layout=='head':
             #read channel locations
             chLocs=pd.read_csv(join(modules_dir, 'TMSiSDK','_resources', 'EEGchannelsTMSi.txt'), sep="\t", header=None)       
@@ -164,76 +178,122 @@ class ImpedanceViewer():
             self.e = pg.PlotCurveItem()
             self.e.setData(-x_ears, y_ears, pen=pg.mkPen((165, 165, 165), width=5))
             self.RealTimePlotWidget.window.addItem(self.e)
-            
-            # Initialise the standard format for the different indicators
-            self.spots = [{'pos': (0,0), 'size': 20, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                          for i in range(len(self.device.imp_channels))]
     
             # Set the position for each indicator
-            for i in range(len(self.device.imp_channels)):
+            for i in range(self.n_chan):
                 if i == 0:
-                    self.spots[i]['pos'] = (-0.05, -0.6)
-                elif i == len(self.device.imp_channels)-1:
+                    if isinstance(self.device, TMSiDevice):
+                        self.spots[i]['pos'] = (0, -0.6)
+                    else:
+                        self.spots[i]['pos'] = (-0.05, -0.6)
+                elif i == self.n_chan - 1 and not isinstance(self.device, TMSiDevice):
                     self.spots[i]['pos'] = (0.05, -0.6)
                 else:
-                      x=chLocs['radius'].values[i-1]*np.sin(np.deg2rad(chLocs['theta'].values[i-1]))
-                      y=chLocs['radius'].values[i-1]*np.cos(np.deg2rad(chLocs['theta'].values[i-1]))                               
-                      self.spots[i]['pos'] = (x,y)
+                    if isinstance(self.device, TMSiDevice):
+                        idx_ch = np.where("'" + chs[i][0] + "'" == chLocs['name'])[0][0]
+                        
+                        x=chLocs['radius'].values[idx_ch]*np.sin(np.deg2rad(chLocs['theta'].values[idx_ch]))
+                        y=chLocs['radius'].values[idx_ch]*np.cos(np.deg2rad(chLocs['theta'].values[idx_ch]))
+                    else:
+                        x=chLocs['radius'].values[i-1]*np.sin(np.deg2rad(chLocs['theta'].values[i-1]))
+                        y=chLocs['radius'].values[i-1]*np.cos(np.deg2rad(chLocs['theta'].values[i-1]))
+                   
+                    self.spots[i]['pos'] = (x,y)
                     
                 # Place the name of each channel below the respective indicator
-                text = f'{self.device.imp_channels[i].name: ^10}'
+                if isinstance(self.device, TMSiDevice):
+                    text = f'{chs[i][0]: ^10}'
+                else:
+                    text = f'{self.device.imp_channels[i].name: ^10}'
                 t_item = pg.TextItem(text, (0, 0, 0), anchor=(0, 0))
                 t_item.setPos(self.spots[i]['pos'][0] -.03, self.spots[i]['pos'][1] - .02)
                 self.RealTimePlotWidget.window.addItem(t_item)
-                
-                self.channel_conversion_list = np.arange(0,len(self.device.imp_channels), dtype = int)
+            
+            # Generate the channel conversion list
+            self.channel_conversion_list = np.arange(0,self.n_chan, dtype = int)
 
         else: 
+            self.channel_conversion_list = self.gui_handle.channel_conversion_list
+           
+            # Insert dummy channels
+            self.dummy_chan = []
+            if '11' in self.grid_type:
+                if not self.grid_type[-1] == '2':
+                    self.dummy_chan.append(10)
+                if not self.grid_type[-1] == '1':
+                    dummy_chan=max(self.channel_conversion_list)
+                    self.dummy_chan.append(dummy_chan)     
+                    
+            # Insert PGND channel in channel conversion list
+            self.channel_conversion_list = np.hstack((self.channel_conversion_list, max(self.gui_handle.channel_conversion_list)+1))
+            # In case of 64 channel device with 32 channel grid, insert channels 33-64
+            if len(self.device.imp_channels) > 34 and max(self.channel_conversion_list) < 34:
+                self.channel_conversion_list = np.hstack((self.channel_conversion_list, np.arange(34, 66)))          
+            
             row_count = -1
+            c_offset = 0
             
-            # Get the HD-EMG conversion file
-            config_file = join(modules_dir, 'TMSiSDK','_resources','HD_EMG_grid_channel_configuration.json')
-            # Open the file if it exists, notify the user if it does not
-            if exists(config_file):
-                # Get the HD-EMG conversion table
-                with open(config_file) as json_file:
-                    self.conversion_data = json.load(json_file)
-            else:
-                print("Couldn't load HD-EMG conversion file, using default channel ordering")
-                self.grid_type = 'none'
-            
-            if self.grid_type.casefold() == '32ch textile grid large'.casefold(): 
-                self.channel_conversion_list = np.hstack((0, np.array(
-                    self.conversion_data['32ch textile grid large']['channel_conversion']), 33))
-            elif self.grid_type.casefold() == '32ch textile grid small'.casefold():
-                self.channel_conversion_list = np.hstack((0, np.array(
-                    self.conversion_data['32ch textile grid small']['channel_conversion']), 33))
-            elif self.grid_type.casefold() == 'SAGA64 32ch textile grid large'.casefold():
-                self.channel_conversion_list = np.hstack((0, np.array(
-                    self.conversion_data['SAGA64 32ch textile grid large']['channel_conversion']), 65))
-            else:
-                self.channel_conversion_list = np.arange(0,len(self.device.imp_channels), dtype = int)
-            
-            # Set the position for each indicator
-            for i in range(len(self.device.imp_channels)):
-                if i == 0:
-                    if len(self.device.imp_channels)>34:
-                        self.spots[i]['pos'] = (3, 8)
+            if '11' in self.grid_type:
+                # Set the position for each indicator
+                for i in range(len(self.device.imp_channels)):
+                    if i == 0:
+                        if len(self.device.imp_channels) > 34:
+                            self.spots[i]['pos'] = (3, 8)
+                        else:
+                            self.spots[i]['pos'] = (3, 4)
+                    elif i == len(self.device.imp_channels)-1:
+                        if len(self.device.imp_channels) > 34:
+                            self.spots[i]['pos'] = (4, 8)
+                        else:
+                            self.spots[i]['pos'] = (4, 4)
+                    elif i-1 in self.dummy_chan:
+                        row_count += 1
+                        self.spots[i]['pos'] = (0, row_count)
+                        c_offset = i-1
+                    elif (i-1-c_offset) % 11 == 0:
+                        row_count += 1
+                        self.spots[i]['pos'] = (0, row_count)
                     else:
-                        self.spots[i]['pos'] = (3, 4)
-                elif i == len(self.device.imp_channels)-1:
-                    if len(self.device.imp_channels) > 34:
-                        self.spots[i]['pos'] = (4, 8)
+                        self.spots[i]['pos'] = (((i-c_offset-1)%11), row_count)
+            else:
+                # Set the position for each indicator
+                for i in range(self.n_chan):
+                    if i == 0:
+                        if self.n_chan > 34:
+                            self.spots[i]['pos'] = (3, 8)
+                        else:
+                            self.spots[i]['pos'] = (3, 4)
+                    elif i == self.n_chan - 1 and not isinstance(self.device, TMSiDevice):
+                        if self.n_chan > 34:
+                            self.spots[i]['pos'] = (4, 8)
+                        else:
+                            self.spots[i]['pos'] = (4, 4)
+                    elif (i-1) % 8 == 0:
+                        row_count += 1
+                        self.spots[i]['pos'] = (((i-1)%8), row_count)
                     else:
-                        self.spots[i]['pos'] = (4, 4)
-                elif (i-1) % 8 == 0:
-                    row_count += 1
-                    self.spots[i]['pos'] = (((i-1)%8), row_count)
-                else:
-                    self.spots[i]['pos'] = (((i-1)%8), row_count)
-                
+                        if i == 0:
+                            if len(self.device.imp_channels) > 34:
+                                self.spots[i]['pos'] = (3, 8)
+                            else:
+                                self.spots[i]['pos'] = (3, 4)
+                        elif i == len(self.device.imp_channels)-1:
+                            if len(self.device.imp_channels) > 34:
+                                self.spots[i]['pos'] = (4, 8)
+                            else:
+                                self.spots[i]['pos'] = (4, 4)
+                        elif (i-1) % 8 == 0:
+                            row_count += 1
+                            self.spots[i]['pos'] = (((i-1)%8), row_count)
+                        else:
+                            self.spots[i]['pos'] = (((i-1)%8), row_count)
+            
+            for i in range(self.n_chan):
                 # Place the name of each channel below the respective indicator
-                text = f'{self.device.imp_channels[self.channel_conversion_list[i]].name: ^10}'
+                if isinstance(self.device, TMSiDevice):
+                    text = f'{chs[self.channel_conversion_list[i]][0]: ^10}'
+                else:
+                    text = f'{self.device.imp_channels[self.channel_conversion_list[i]].name: ^10}'
                 t_item = pg.TextItem(text, (128, 128, 128), anchor=(0, 0))
                 t_item.setPos(self.spots[i]['pos'][0] -.25, self.spots[i]['pos'][1] + .1)
                 self.RealTimePlotWidget.window.addItem(t_item)
@@ -244,12 +304,15 @@ class ImpedanceViewer():
         
         # Create a list with impedance values to display next to the plot
         self.text_items = []
-        for i in range(len(self.device.imp_channels)): 
+        for i in range(self.n_chan): 
             # Display 33 names per list (66 impedance channels in SAGA64+)
             list_split_idx = 33
             num_column = np.floor(i/list_split_idx)
             value = 5000
-            text = f'{self.device.imp_channels[self.channel_conversion_list[i]].name}\t{value:>4}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}'            
+            if isinstance(self.device, TMSiDevice):
+                text = f'{chs[self.channel_conversion_list[i]][0]}\t{value:>4}\t{chs[self.channel_conversion_list[i]][1][0]}'   
+            else:
+                text = f'{self.device.imp_channels[self.channel_conversion_list[i]].name}\t{value:>4}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}'            
             t_item = pg.TextItem(text, (0, 0, 0), 
                                  anchor = (-num_column *1.2, -i*0.9 + list_split_idx * 0.9 * np.floor(i/list_split_idx)))
             self.text_items.append(t_item)
@@ -261,13 +324,30 @@ class ImpedanceViewer():
         """ Method that updates the indicators according to the measured impedance values
         """
         for i in range(len(self.spots)):
-            self.spots[i]['brush'] = QtGui.QBrush(self._lookup_table(data[i]))
-            text = f"{self.device.imp_channels[self.channel_conversion_list[i]].name}\t{data[i]:>4}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}"            
+            if isinstance(self.device, TMSiDevice):
+                if self.device.get_device_impedance_channels()[self.channel_conversion_list[i]].get_channel_name() in self._disable_channels:
+                    self.spots[i]['brush'] = QtGui.QBrush(QtGui.QColor(175, 175, 175))
+                else:
+                    self.spots[i]['brush'] = QtGui.QBrush(self._lookup_table(data[i]))
+                text = f"{self.device.get_device_impedance_channels()[self.channel_conversion_list[i]].get_channel_name()}\t{data[i]:>4}\t{self.device.get_device_impedance_channels()[self.channel_conversion_list[i]].get_channel_unit_name()[0]}"            
+            else:
+                if self.device.imp_channels[self.channel_conversion_list[i]].name in self._disable_channels:
+                    self.spots[i]['brush'] = QtGui.QBrush(QtGui.QColor(175, 175, 175))
+                else:
+                    self.spots[i]['brush'] = QtGui.QBrush(self._lookup_table(data[i]))
+                text = f"{self.device.imp_channels[self.channel_conversion_list[i]].name}\t{data[i]:>4}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}"            
             self.text_items[i].setText(text)
         self.c.setData(self.spots)
         
                 
     def _lookup_table(self, value):
+        """Look up table to convert impedances to color coding is device specific"""
+        if isinstance(self.device, TMSiDevice):
+            return self._lookup_table_APEX(value)
+        else:
+            return self._lookup_table_SAGA(value)
+    
+    def _lookup_table_SAGA(self, value):
         """Look up table to convert impedances to color coding"""
         if value < 5:
             color_code = QtGui.QColor(0, 255, 0)
@@ -286,16 +366,47 @@ class ImpedanceViewer():
         elif value >= 400 and value < 500:
             color_code = QtGui.QColor(153, 0, 0)
         elif value == 500:
-            color_code = QtGui.QColor(102, 66, 33)
+            color_code = QtGui.QColor(0, 0, 0)
         elif value == 5000:
-            color_code = QtGui.QColor(128, 128, 128)
+            color_code = QtGui.QColor(175, 175, 175)
         elif value == 5100:
             color_code = QtGui.QColor(204, 0, 102)
         elif value == 5200:
             color_code = QtGui.QColor(0, 0, 179)
         return color_code
     
+    def _lookup_table_APEX(self, value):
+        """Look up table to convert impedances to color coding"""
+        if value < 5:
+            color_code = QtGui.QColor(0, 255, 0)
+        elif value >= 5 and value < 10:
+            color_code = QtGui.QColor(0, 204, 0)
+        elif value >= 10 and value < 30:
+            color_code = QtGui.QColor(0, 153, 0)
+        elif value >= 30 and value < 50:
+            color_code = QtGui.QColor(0, 102, 0)
+        elif value >= 50 and value < 100:
+            color_code = QtGui.QColor(255, 255, 0)
+        elif value >= 100 and value < 200:
+            color_code = QtGui.QColor(204, 128, 0)
+        elif value >= 200 and value < 400:
+            color_code = QtGui.QColor(255, 0, 0)
+        elif value >= 400 and value < 1000:
+            color_code = QtGui.QColor(153, 0, 0)
+        else:
+            color_code = QtGui.QColor(38, 38, 38)
+        return color_code
+    
+    
     def _generate_legend(self):
+        """Generate the device specific legend"""
+        if isinstance(self.device, TMSiDevice):
+            return self._generate_APEX_legend()
+        else:
+            return self._generate_SAGA_legend()
+    
+        
+    def _generate_SAGA_legend(self):    
         """ Method that generates the dummy samples needed to plot the legend
         """
         legend_spots = [{'pos': (0,0), 'size': 10, 'pen': 'k', 'brush': QtGui.QBrush() , 'name': ''} for i in range(12)]
@@ -316,14 +427,47 @@ class ImpedanceViewer():
         legend_spots[7]['name'] = '400 - 500 k\u03A9'
         legend_spots[7]['brush'] = QtGui.QBrush(QtGui.QColor(153, 0, 0))
         legend_spots[8]['name'] = '≥ 500 k\u03A9 / Not connected'
-        legend_spots[8]['brush'] = QtGui.QBrush(QtGui.QColor(102, 66, 33))
+        legend_spots[8]['brush'] = QtGui.QBrush(QtGui.QColor(0, 0, 0))
         legend_spots[9]['name'] = 'Disabled'
-        legend_spots[9]['brush'] = QtGui.QBrush(QtGui.QColor(128, 128, 128))
+        legend_spots[9]['brush'] = QtGui.QBrush(QtGui.QColor(175, 175, 175))
         legend_spots[10]['name'] = 'Odd/Even error'
         legend_spots[10]['brush'] = QtGui.QBrush(QtGui.QColor(204, 0, 102))
         legend_spots[11]['name'] = 'PGND disconnected'
         legend_spots[11]['brush'] = QtGui.QBrush(QtGui.QColor(0, 0, 179))
         return legend_spots
+    
+    
+    def _generate_APEX_legend(self):    
+        """ Method that generates the dummy samples needed to plot the legend
+        """
+        legend_spots = [{'pos': (0,0), 'size': 10, 'pen': 'k', 'brush': QtGui.QBrush() , 'name': ''} for i in range(9)]
+        legend_spots[0]['name'] = '0 - 5 k\u03A9'
+        legend_spots[0]['brush'] = QtGui.QBrush(QtGui.QColor(0, 255, 0))
+        legend_spots[1]['name'] = '5 - 10 k\u03A9'
+        legend_spots[1]['brush'] = QtGui.QBrush(QtGui.QColor(0, 204, 0))
+        legend_spots[2]['name'] = '10 - 30 k\u03A9'
+        legend_spots[2]['brush'] = QtGui.QBrush(QtGui.QColor(0, 153, 0))
+        legend_spots[3]['name'] = '30 - 50 k\u03A9'
+        legend_spots[3]['brush'] = QtGui.QBrush(QtGui.QColor(0, 102, 0))
+        legend_spots[4]['name'] = '50 - 100 k\u03A9'
+        legend_spots[4]['brush'] = QtGui.QBrush(QtGui.QColor(255, 255, 0))
+        legend_spots[5]['name'] = '100 - 200 k\u03A9'
+        legend_spots[5]['brush'] = QtGui.QBrush(QtGui.QColor(204, 128, 0))
+        legend_spots[6]['name'] = '200 - 400 k\u03A9'
+        legend_spots[6]['brush'] = QtGui.QBrush(QtGui.QColor(255, 0, 0))
+        legend_spots[7]['name'] = '400 - 1000 k\u03A9'
+        legend_spots[7]['brush'] = QtGui.QBrush(QtGui.QColor(153, 0, 0))
+        legend_spots[8]['name'] = '≥ 1000 k\u03A9 / Not connected'
+        legend_spots[8]['brush'] = QtGui.QBrush(QtGui.QColor(38, 38, 38))
+
+        return legend_spots
+
+    def _update_active_channels(self):
+        self._disable_channels = []
+        # Update the channel selection based on the clicked checkboxes
+        for i in range(np.size(self.gui_handle._checkboxes,0)):
+            if not self.gui_handle._checkboxes[i].isChecked():
+                self._disable_channels.append(self.device.channels[self.gui_handle.active_channel_conversion_list[i]].name)
 
     def setupThread(self):
         """ Method that initialises the sampling thread of the device
@@ -358,8 +502,12 @@ class SamplingThread(QtCore.QObject):
         # Prepare Queue
         self.q_sample_sets = queue.Queue(1000)
         
+        
         # Register the consumer to the sample server
-        sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
+        if isinstance(self.device, TMSiDevice):
+            ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+        else:
+            sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
         
         # # Start measurement
         self.sampling = True
@@ -381,7 +529,10 @@ class SamplingThread(QtCore.QObject):
                 # Use the final measured impedance value and convert to integer value
                 impedance_values = [int(x) for x in sample_set.samples]
                 
-                impedance_values = [impedance_values[i] for i in self.channel_conversion_list]
+                if isinstance(self.device, TMSiDevice):
+                    impedance_values = [impedance_values[i*2] for i in self.channel_conversion_list]
+                else:
+                    impedance_values = [impedance_values[i] for i in self.channel_conversion_list]
                 
                 self.impedance_values = impedance_values
 
@@ -396,13 +547,16 @@ class SamplingThread(QtCore.QObject):
             This stop event stops the measurement and closes the connection to 
             the device.
         """
-        self.sampling = False
-        
+        self.sampling = False            
+            
         if self._save_impedances:
             store_imp = []
             
             for i in range(len(self.impedance_values)):
-                store_imp.append(f"{self.device.imp_channels[i].name}\t{self.impedance_values[self.channel_conversion_list[i]]}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}")
+                if isinstance(self.device, TMSiDevice):
+                    store_imp.append(f"{self.device.get_device_impedance_channels()[i].get_channel_name()}\t{self.impedance_values[self.channel_conversion_list[i]]}\t{self.device.get_device_impedance_channels()[self.channel_conversion_list[i]].get_channel_unit_name()[0]}")
+                else:
+                    store_imp.append(f"{self.device.imp_channels[i].name}\t{self.impedance_values[self.channel_conversion_list[i]]}\t{self.device.imp_channels[self.channel_conversion_list[i]].unit_name}")
     
             now = datetime.datetime.now()
             filetime = now.strftime("%Y%m%d_%H%M%S")

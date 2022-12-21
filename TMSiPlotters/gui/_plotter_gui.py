@@ -46,10 +46,51 @@ class Ui_MainWindow(object):
         self.centralwidget.setObjectName(u"centralwidget")
         self.gridLayout = QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName(u"gridLayout")
+        self.RealTimePlotWidget = GraphicsLayoutWidget(self.centralwidget)
+        self.RealTimePlotWidget.setObjectName(u"RealTimePlotWidget")
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.RealTimePlotWidget.sizePolicy().hasHeightForWidth())
+        self.RealTimePlotWidget.setSizePolicy(sizePolicy)
+
+        self.gridLayout.addWidget(self.RealTimePlotWidget, 0, 1, 3, 4)
+
+        self.autoscale_button = QPushButton(self.centralwidget)
+        self.autoscale_button.setObjectName(u"autoscale_button")
+
+        self.gridLayout.addWidget(self.autoscale_button, 3, 3, 1, 1)
+
         self.increase_time_button = QPushButton(self.centralwidget)
         self.increase_time_button.setObjectName(u"increase_time_button")
 
         self.gridLayout.addWidget(self.increase_time_button, 3, 2, 1, 1)
+
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.set_range_label = QLabel(self.centralwidget)
+        self.set_range_label.setObjectName(u"set_range_label")
+        font = QFont()
+        font.setBold(True)
+        font.setWeight(75)
+        self.set_range_label.setFont(font)
+
+        self.verticalLayout.addWidget(self.set_range_label)
+
+        self.set_range_box = QComboBox(self.centralwidget)
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.addItem("")
+        self.set_range_box.setObjectName(u"set_range_box")
+
+        self.verticalLayout.addWidget(self.set_range_box)
+
+
+        self.gridLayout.addLayout(self.verticalLayout, 3, 4, 1, 1)
 
         self.gridLayout_2 = QGridLayout()
         self.gridLayout_2.setObjectName(u"gridLayout_2")
@@ -109,55 +150,19 @@ class Ui_MainWindow(object):
 
         self.channel_list_groupbox = QGroupBox(self.centralwidget)
         self.channel_list_groupbox.setObjectName(u"channel_list_groupbox")
-        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.channel_list_groupbox.sizePolicy().hasHeightForWidth())
-        self.channel_list_groupbox.setSizePolicy(sizePolicy)
+        sizePolicy1 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.channel_list_groupbox.sizePolicy().hasHeightForWidth())
+        self.channel_list_groupbox.setSizePolicy(sizePolicy1)
         self.channel_list_groupbox.setMinimumSize(QSize(100, 0))
         self.channel_list_groupbox.setMaximumSize(QSize(400, 16777215))
-        font = QFont()
-        font.setBold(False)
-        font.setWeight(50)
-        self.channel_list_groupbox.setFont(font)
+        font1 = QFont()
+        font1.setBold(False)
+        font1.setWeight(50)
+        self.channel_list_groupbox.setFont(font1)
 
         self.gridLayout.addWidget(self.channel_list_groupbox, 0, 0, 1, 1)
-
-        self.autoscale_button = QPushButton(self.centralwidget)
-        self.autoscale_button.setObjectName(u"autoscale_button")
-
-        self.gridLayout.addWidget(self.autoscale_button, 3, 3, 1, 1)
-
-        self.RealTimePlotWidget = GraphicsLayoutWidget(self.centralwidget)
-        self.RealTimePlotWidget.setObjectName(u"RealTimePlotWidget")
-
-        self.gridLayout.addWidget(self.RealTimePlotWidget, 0, 1, 3, 4)
-
-        self.verticalLayout = QVBoxLayout()
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.set_range_label = QLabel(self.centralwidget)
-        self.set_range_label.setObjectName(u"set_range_label")
-        font1 = QFont()
-        font1.setBold(True)
-        font1.setWeight(75)
-        self.set_range_label.setFont(font1)
-
-        self.verticalLayout.addWidget(self.set_range_label)
-
-        self.set_range_box = QComboBox(self.centralwidget)
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.addItem("")
-        self.set_range_box.setObjectName(u"set_range_box")
-
-        self.verticalLayout.addWidget(self.set_range_box)
-
-
-        self.gridLayout.addLayout(self.verticalLayout, 3, 4, 1, 1)
 
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
@@ -173,6 +178,18 @@ class Ui_MainWindow(object):
 
 
         self.gridLayout.addLayout(self.horizontalLayout, 3, 0, 1, 1)
+
+        self.table_live_impedance = QTableWidget(self.centralwidget)
+        self.table_live_impedance.setObjectName(u"table_live_impedance")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.table_live_impedance.sizePolicy().hasHeightForWidth())
+        self.table_live_impedance.setSizePolicy(sizePolicy2)
+        self.table_live_impedance.setMinimumSize(QSize(220, 0))
+        self.table_live_impedance.setMaximumSize(QSize(220, 16777215))
+
+        self.gridLayout.addWidget(self.table_live_impedance, 0, 5, 3, 1)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
@@ -190,7 +207,17 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
+        self.autoscale_button.setText(QCoreApplication.translate("MainWindow", u"Auto Scale", None))
         self.increase_time_button.setText(QCoreApplication.translate("MainWindow", u"Increase time range", None))
+        self.set_range_label.setText(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>Set Range ('\u00b5Volt')</p></body></html>", None))
+        self.set_range_box.setItemText(0, QCoreApplication.translate("MainWindow", u"1", None))
+        self.set_range_box.setItemText(1, QCoreApplication.translate("MainWindow", u"20", None))
+        self.set_range_box.setItemText(2, QCoreApplication.translate("MainWindow", u"50", None))
+        self.set_range_box.setItemText(3, QCoreApplication.translate("MainWindow", u"100", None))
+        self.set_range_box.setItemText(4, QCoreApplication.translate("MainWindow", u"250", None))
+        self.set_range_box.setItemText(5, QCoreApplication.translate("MainWindow", u"1000", None))
+        self.set_range_box.setItemText(6, QCoreApplication.translate("MainWindow", u"10000", None))
+
         self.hide_UNI_button.setText(QCoreApplication.translate("MainWindow", u"Hide UNI", None))
         self.show_BIP_button.setText(QCoreApplication.translate("MainWindow", u"Show BIP", None))
         self.show_UNI_button.setText(QCoreApplication.translate("MainWindow", u"Show UNI", None))
@@ -201,16 +228,6 @@ class Ui_MainWindow(object):
         self.hide_DIGI_button.setText(QCoreApplication.translate("MainWindow", u"Hide DIGI", None))
         self.decrease_time_button.setText(QCoreApplication.translate("MainWindow", u"Decrease time range", None))
         self.channel_list_groupbox.setTitle(QCoreApplication.translate("MainWindow", u"Channel list", None))
-        self.autoscale_button.setText(QCoreApplication.translate("MainWindow", u"Auto Scale", None))
-        self.set_range_label.setText(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>Set Range ('\u00b5Volt')</p></body></html>", None))
-        self.set_range_box.setItemText(0, QCoreApplication.translate("MainWindow", u"1", None))
-        self.set_range_box.setItemText(1, QCoreApplication.translate("MainWindow", u"20", None))
-        self.set_range_box.setItemText(2, QCoreApplication.translate("MainWindow", u"50", None))
-        self.set_range_box.setItemText(3, QCoreApplication.translate("MainWindow", u"100", None))
-        self.set_range_box.setItemText(4, QCoreApplication.translate("MainWindow", u"250", None))
-        self.set_range_box.setItemText(5, QCoreApplication.translate("MainWindow", u"1000", None))
-        self.set_range_box.setItemText(6, QCoreApplication.translate("MainWindow", u"10000", None))
-
         self.enable_filter_button.setText(QCoreApplication.translate("MainWindow", u"Enable filter", None))
         self.disable_filter_button.setText(QCoreApplication.translate("MainWindow", u"Disable filter", None))
     # retranslateUi

@@ -34,6 +34,8 @@ import sys
 
 from TMSiSDK import sample_data_server
 from TMSiSDK.device import ChannelType, DeviceInterfaceType
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
 
 import numpy as np
 import queue
@@ -55,24 +57,41 @@ class RealTimeFilter:
         """Initialise filter instance
         """
         self.device=device
-        self.num_channels = np.size(self.device.channels,0)
-        self.sample_rate = self.device.config.get_sample_rate(ChannelType.counter)
+        if isinstance(device, TMSiDevice):
+            self.num_channels = np.size(self.device.get_device_channels(),0)
+            self.sample_rate = self.device.get_device_sampling_frequency()
+            self._preprocess_wifi = False
+            
+            _UNI=[]
+            _BIP=[]
+            _AUX=[]
+            
+            for idx, ch in enumerate(device.get_device_channels()):
+                if (ch.get_channel_type().value == ChannelType.UNI.value):
+                    _UNI.append(idx)
+                elif (ch.get_channel_type().value == ChannelType.BIP.value):
+                    _BIP.append(idx)
+                elif (ch.get_channel_type().value == ChannelType.AUX.value):
+                    _AUX.append(idx)
+        else:
+            self.num_channels = np.size(self.device.channels,0)
+            self.sample_rate = self.device.config.get_sample_rate(ChannelType.counter)
+            
+            self._preprocess_wifi = False
+            if self.device.info.dr_interface == DeviceInterfaceType.wifi:
+                self._preprocess_wifi = True
         
-        self._preprocess_wifi = False
-        if self.device.info.dr_interface == DeviceInterfaceType.wifi:
-            self._preprocess_wifi = True
-        
-        _UNI=[]
-        _BIP=[]
-        _AUX=[]
-        
-        for idx, ch in enumerate(device.channels):
-            if (ch.type == ChannelType.UNI):
-                _UNI.append(idx)
-            elif (ch.type == ChannelType.BIP):
-                _BIP.append(idx)
-            elif (ch.type == ChannelType.AUX):
-                _AUX.append(idx)
+            _UNI=[]
+            _BIP=[]
+            _AUX=[]
+            
+            for idx, ch in enumerate(device.channels):
+                if (ch.type == ChannelType.UNI):
+                    _UNI.append(idx)
+                elif (ch.type == ChannelType.BIP):
+                    _BIP.append(idx)
+                elif (ch.type == ChannelType.AUX):
+                    _AUX.append(idx)
     
         self.channels={'UNI': _UNI,
                       'BIP': _BIP, 
@@ -213,7 +232,10 @@ class FilterThread(threading.Thread):
         self._preprocess_wifi = main_class._preprocess_wifi
         
         # Register the consumer to the sample data server
-        sample_data_server.registerConsumer(main_class.device.id, self.q_sample_sets)
+        if isinstance(self.device, TMSiDevice):
+            ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+        else:       
+            sample_data_server.registerConsumer(main_class.device.id, self.q_sample_sets)
                 
 
     def run(self): 

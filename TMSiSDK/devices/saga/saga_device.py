@@ -453,6 +453,9 @@ class SagaDevice(Device):
             read_xml_config._configured_interface=self._config._configured_interface
             self._config = read_xml_config
             self._update_config()
+        else:
+            print('Can not load .xml config file')
+            raise TMSiError(TMSiErrorCode.general_error)
 
     def update_sensors(self):
         """ Called when sensors have been attached or detached to/from the device.
@@ -950,6 +953,12 @@ def _discover(ds_interface, dr_interface):
 
 
 def discover(ds_interface, dr_interface):
+    if not SagaDllAvailable:
+        print("SAGA DLL not available.")
+        raise TMSiError(code=TMSiErrorCode.missing_dll)
+    if SagaDllLocked:
+        print("SAGA DLL already in use.")
+        raise TMSiError(code=TMSiErrorCode.already_in_use_dll)
     discoveryList = []
 
     if (_tmsi_sdk == None):

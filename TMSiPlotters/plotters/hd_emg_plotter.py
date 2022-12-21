@@ -38,9 +38,9 @@ import time
 import queue
 from scipy import signal, interpolate
 import sys
-import json
 
-from os.path import join, dirname, realpath, normpath, exists
+
+from os.path import join, dirname, realpath, normpath
 
 Plotter_dir = dirname(realpath(__file__)) # directory of this file
 measurements_dir = join(Plotter_dir, '../../measurements') # directory with all measurements
@@ -71,15 +71,13 @@ class HeatMapViewer():
         self.RealTimePlotWidget = self.gui_handle.RealTimePlotWidget
         
         # Determine used number of channels
-        if self.device.config.num_channels > 64 and grid_type.casefold() == 'flex pcb grid':
-            self._EMG_chans = 64
+        if self.device.config.num_channels > 64: 
+            if '4-8' in grid_type or grid_type[-1] == '1' or grid_type[-1] == '2':
+                self._EMG_chans = 32
+            else:
+                self._EMG_chans = 64
         else:
             self._EMG_chans = 32
-            
-        if self.device.config.reference_method[0] == 'common':
-            self._chan_offset = 1
-        else:
-            self._chan_offset = 0
         
         self._preprocess_wifi = False
         if self.device.info.dr_interface == DeviceInterfaceType.wifi:
@@ -95,6 +93,12 @@ class HeatMapViewer():
         
         # Type of used grid
         self.grid_type = grid_type
+        if not '11' in self.grid_type:
+            self.n_x = int(self._EMG_chans/8)
+            self.n_y = 8
+        else:
+            self.n_x = int(np.ceil(self._EMG_chans/11))
+            self.n_y = 11
         
         # Set up UI and thread
         self.initUI()
@@ -122,13 +126,40 @@ class HeatMapViewer():
         self.RealTimePlotWidget.window.setMenuEnabled(False)
         self.RealTimePlotWidget.window.setMouseEnabled(x = False, y = False)
         
+        # Delete CREF channel from channel conversion list
+        self.channel_conversion_list = np.delete(self.gui_handle.channel_conversion_list[:self._EMG_chans+1], 0) 
+        
+        # Detect disabled channels
+        self.channel_insertion_list = []
+        offset=0
+        for ch in range(self._EMG_chans+1):
+            if not self.device.channels[ch-offset].name == self.device._config._channels[ch].alt_name:
+                offset  =offset + 1
+                self.channel_insertion_list.append(ch)
+        
+        # Insert dummy channels
+        self.dummy_chan = []
+        if '11' in self.grid_type:
+            if not self.grid_type[-1] == '2':
+                self.dummy_chan.append(10)
+                self.channel_conversion_list = np.insert(self.channel_conversion_list, 10, max(self.channel_conversion_list)+1)
+            if not self.grid_type[-1] == '1':
+                dummy_chan=max(self.channel_conversion_list)+1
+                self.dummy_chan.append(dummy_chan)
+                self.channel_conversion_list = np.append(self.channel_conversion_list, dummy_chan)        
+        
         # Ratio is slightly different between 32/64 channel setup
-        if self._EMG_chans == 32:
-            self._x_interpolate = np.arange(0, int((len(self.device.channels)-2 - self._chan_offset)/8) - 1 + .1, 0.1)
-            self._y_interpolate = np.arange(0, int((len(self.device.channels)-2 - self._chan_offset)/(self._EMG_chans/8)) - 1 + .2, 0.1)
+        # Number of rows/columns depends on grid-type
+        if not '11' in self.grid_type:
+            if self._EMG_chans == 32:
+                self._x_interpolate = np.arange(0, int(self._EMG_chans/8) - 1 + .1, 0.1)
+                self._y_interpolate = np.arange(0, int(self._EMG_chans/(self._EMG_chans/8)) - 1 + .1, 0.1)
+            else:
+                self._x_interpolate = np.arange(0, int(self._EMG_chans/8) - 1 + .2, 0.1)
+                self._y_interpolate = np.arange(0, int(self._EMG_chans/(self._EMG_chans/8)) - 1 + .1, 0.1)
         else:
-            self._x_interpolate = np.arange(0, int((len(self.device.channels)-2 - self._chan_offset)/8) - 1 + .2, 0.1)
-            self._y_interpolate = np.arange(0, int((len(self.device.channels)-2 - self._chan_offset)/(self._EMG_chans/8)) - 1 + .2, 0.1)
+            self._x_interpolate = np.arange(0, self.n_x - 1 + .1, 0.1)
+            self._y_interpolate = np.arange(0, self.n_y - 1 + .1, 0.1)
         self._dummy_val = np.zeros((len(self._x_interpolate), len(self._y_interpolate)))
         
         if self.tail_orientation == 'Right' or self.tail_orientation == 'right':
@@ -147,14 +178,15 @@ class HeatMapViewer():
         self.bar = pg.ColorBarItem(values = (0, self.signal_lim), colorMap=cm, interactive = False, label = 'RMS (\u03BCVolt)', )
         self.bar.setImageItem(self.img, insert_in = self.RealTimePlotWidget.window)
         
-        # Scale factor (number of interpolation points to cover a width of 3 or 7 columns)
-        corr_x = len(self._x_interpolate) / (int((len(self.device.channels)-2-self._chan_offset)/8)-1)
+        # Scale factor (number of interpolation points to cover a width of n columns)
+        corr_x = len(self._x_interpolate) / max(self._x_interpolate)
         
-        # Scale factor (number of interpolation points to cover a width of 7 rows)
-        corr_y = len(self._y_interpolate) / 7
+        # Scale factor (number of interpolation points to cover a width of n rows)
+        corr_y = len(self._y_interpolate) / max(self._y_interpolate)
         
-        locs = np.array([[(i%8) * corr_y, int(i/8) * corr_x] for i in range(self._EMG_chans)])
-        
+        # Number of rows/columns depends on grid-type
+        locs = np.array([[(i%self.n_y) * corr_y, int(i/self.n_y) * corr_x] for i in range(self.n_x*self.n_y)])
+         
         # Text object required for the tail orientation
         tail_text = pg.TextItem('TAIL', (128, 128, 128), anchor=(0, 0))
         tail_text.setFont(QtGui.QFont("Times", 16, QtGui.QFont.ExtraBold))
@@ -162,65 +194,47 @@ class HeatMapViewer():
         # Initialise the standard format for the different indicators
         if self.tail_orientation == 'Left' or self.tail_orientation == 'left': 
             self.spots = [{'pos': locs[i], 'size': 5, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                              for i in range(self._EMG_chans)]
+                              for i in range(self._EMG_chans+len(self.dummy_chan)) if self.channel_conversion_list[i] <= self._EMG_chans]
             tail_text.setPos(self.spots[0]['pos'][0] - 1 * corr_y, self.spots[0]['pos'][1] + 1.5 * corr_x)
             
         elif self.tail_orientation == 'Up' or self.tail_orientation == 'up':
             self.spots = [{'pos': [locs.T[1][-i-1], locs[::-1].T[0][-i-1]], 'size': 5, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                              for i in range(self._EMG_chans)]
+                              for i in range(self._EMG_chans+len(self.dummy_chan)) if self.channel_conversion_list[i] <= self._EMG_chans]
             tail_text.setPos(self.spots[0]['pos'][0] - 2 * corr_y, self.spots[0]['pos'][1] - 0.5 * corr_x)
             
         elif self.tail_orientation == 'Right' or self.tail_orientation == 'right':
             self.spots = [{'pos': locs[::-1][i], 'size': 5, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                              for i in range(self._EMG_chans)]
+                              for i in range(self._EMG_chans+len(self.dummy_chan)) if self.channel_conversion_list[i] <= self._EMG_chans]
             tail_text.setPos(self.spots[0]['pos'][0] + 0.5 * corr_y, self.spots[0]['pos'][1] - 1.5 * corr_x)
             
         elif self.tail_orientation == 'Down' or self.tail_orientation == 'down':
             self.spots = [{'pos': [locs[::-1].T[1][-i-1], locs.T[0][-i-1]], 'size': 5, 'pen': 'k', 'brush': QtGui.QBrush(QtGui.QColor(128, 128, 128))} \
-                              for i in range(self._EMG_chans)]
+                              for i in range(self._EMG_chans+len(self.dummy_chan)) if self.channel_conversion_list[i] <= self._EMG_chans]
             tail_text.setPos(self.spots[0]['pos'][0] + 1 *corr_y, self.spots[0]['pos'][1] + 0.5 * corr_x)
             
         # Add the text object to the plot
         self.RealTimePlotWidget.window.addItem(tail_text)
-        
-        # Get the HD-EMG conversion file
-        config_file = join(modules_dir, 'TMSiSDK','_resources','HD_EMG_grid_channel_configuration.json')
-        # Open the file if it exists, notify the user if it does not
-        if exists(config_file):
-            # Get the HD-EMG conversion table
-            with open(config_file) as json_file:
-                self.conversion_data = json.load(json_file)
-        else:
-            print("Couldn't load HD-EMG conversion file, using default channel ordering")
-            self.grid_type = 'none'
-        
-        if self.grid_type.casefold() == '32ch textile grid large'.casefold(): 
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['32ch textile grid large']['channel_conversion']) - 1
-            
-        elif self.grid_type.casefold() == '32ch textile grid small'.casefold():
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['32ch textile grid small']['channel_conversion']) - 1
-
-        elif self.grid_type.casefold() == 'SAGA64 32ch textile grid large'.casefold():
-            # Convert to position of the grid
-            self.channel_conversion_list = np.array(self.conversion_data['SAGA64 32ch textile grid large']['channel_conversion']) - 1
-            # Only use the first 32 channels for plotting
-            self.channel_conversion_list = self.channel_conversion_list[0+self._chan_offset : 32+self._chan_offset]
-        else:
-            self.channel_conversion_list = np.array(self.conversion_data['flex pcb grid']['channel_conversion']) - 1
-
-            
-        # Set the position for each indicator
-        for i in range(len(self.device.channels)):
-            if i > self._EMG_chans-1:
-                break
-            # Place the name of each channel below the respective indicator
-            text = f'{self.device.channels[self.channel_conversion_list[i]+self._chan_offset].name: ^10}'
-            t_item = pg.TextItem(text, (128, 128, 128), anchor=(0, 0))
-            t_item.setPos(self.spots[i]['pos'][0] -.25, self.spots[i]['pos'][1] + .1)
-            self.RealTimePlotWidget.window.addItem(t_item)
          
+        i_corr = 0
+        # Set the position for each indicator
+        for i in range(len(self.device._config._channels)):
+            if i > (self.n_x*self.n_y) - 1:
+                break
+            # Select channel from conversion list and correct for dummy channels
+            i_ch = self.channel_conversion_list[i]
+            if i_ch <= (self._EMG_chans):
+                # Place the name of each channel below the respective indicator
+                # Text colour is red for disabled channels
+                text = f'{self.device._config._channels[i_ch].alt_name: ^10}'
+                if i_ch in self.channel_insertion_list:
+                    t_item = pg.TextItem(text, (255, 0, 0), anchor=(0, 0))
+                else:
+                    t_item = pg.TextItem(text, (128, 128, 128), anchor=(0, 0))
+                t_item.setPos(self.spots[i-i_corr]['pos'][0] -.25, self.spots[i-i_corr]['pos'][1] + .1)
+                self.RealTimePlotWidget.window.addItem(t_item) 
+            else:
+                i_corr = i_corr + 1
+    
                 
         # Add all indicators to the plot
         self.c = pg.ScatterPlotItem(self.spots)
@@ -240,7 +254,7 @@ class HeatMapViewer():
         
         data = self.img.image
         if type_flag == 'scale':
-            self.signal_lim = np.max(data)
+            self.signal_lim = np.nanmax(data)
         elif type_flag == 'range':
             self.signal_lim = int(self.gui_handle.set_range_box.currentText())
         
@@ -275,26 +289,29 @@ class SamplingThread(QtCore.QObject):
         self.device = main_class.device
         self.sample_rate = main_class.sample_rate
         self._EMG_chans = main_class._EMG_chans
-        self._chan_offset = main_class._chan_offset
         self.grid_type = main_class.grid_type
         self.channel_conversion_list = main_class.channel_conversion_list
         self._preprocess_wifi = main_class._preprocess_wifi
         
-        self.window_buffer = np.zeros((self._EMG_chans, self.sample_rate * 5))
+        self.window_buffer = np.zeros((self._EMG_chans+len(main_class.dummy_chan), self.sample_rate * 5))
         self.window_rms_size = self.sample_rate // 4
         self._add_final = 0
         
         self.sos = signal.butter(2, 10, 'highpass', fs=self.sample_rate, output='sos')
         z_sos0 = signal.sosfilt_zi(self.sos)
-        self.z_sos = np.repeat(z_sos0[:, np.newaxis, :], len(self.device.channels)-2-self._chan_offset, axis=1)
-        
-        self._x_grid = np.arange(0, self._EMG_chans/8, dtype=int)
-        self._y_grid = np.arange(0, 8, dtype=int)
-        
+        self.z_sos = np.repeat(z_sos0[:, np.newaxis, :], (self._EMG_chans+len(main_class.dummy_chan)), axis=1)
+    
+        self.n_x=main_class.n_x
+        self.n_y=main_class.n_y
+        self._x_grid = np.arange(0, self.n_x, dtype=int)
+        self._y_grid = np.arange(0, self.n_y, dtype=int)
+                
         self._x_interpolate = main_class._x_interpolate
         self._y_interpolate = main_class._y_interpolate
         
         self.tail_orientation = main_class.tail_orientation
+        self.channel_insertion_list = main_class.channel_insertion_list
+        self.dummy_chan = main_class.dummy_chan
         
         # Prepare Queue
         self.q_sample_sets = queue.Queue(1000)
@@ -310,6 +327,7 @@ class SamplingThread(QtCore.QObject):
         """ Method that retrieves the sample data from the device. The method 
             gives the impedance value as output
         """
+        
         while self.sampling:
             while not self.q_sample_sets.empty():
                 
@@ -321,8 +339,7 @@ class SamplingThread(QtCore.QObject):
                 samples = np.reshape(sd.samples, (sd.num_samples_per_sample_set, sd.num_sample_sets), order = 'F')
                 self.new_samples = sd.num_sample_sets
                 
-                conversion_list = self.channel_conversion_list  + self._chan_offset
-                
+                conversion_list = self.channel_conversion_list  
                 # Missing samples are registered as NaN. This crashes the filter. 
                 # Therefore, copies are inserted for the filtered data
                 if self._preprocess_wifi:
@@ -331,47 +348,63 @@ class SamplingThread(QtCore.QObject):
                         idx_nan = np.where(np.isnan(samples))
                         samples[idx_nan] = samples[idx_nan[0], idx_nan[1][0]-1]
 
-                        
+                # Insert disabled channels to maintain proper channel positions
+                if len(self.channel_insertion_list) == 1:
+                    samples = np.insert(samples, self.channel_insertion_list, 0, axis=0)
+                else:
+                    for ch in self.channel_insertion_list:
+                        samples = np.insert(samples, ch, 0, axis=0)
+                
+                # Insert dummy channels
+                for ch in self.dummy_chan:
+                    samples = np.insert(samples, self._EMG_chans+1, np.nan, axis=0)
+             
                 # Fill the window buffer with the reshaped sample set
                 self.window_buffer[:, self._add_final:(self._add_final + self.new_samples)] = samples[conversion_list,:]
                 
                 if self._add_final + self.new_samples > self.window_rms_size:
                     filt_data, self.z_sos = signal.sosfilt(self.sos, self.window_buffer[:, 0:self.window_rms_size], zi = self.z_sos)
+                    
                     if self._preprocess_wifi:
                         if np.isnan(filt_data).any():
                             print('The filter crashed due to lost samples; resetting filter...')
                             self.sos = signal.butter(2, 10, 'highpass', fs=self.sample_rate, output='sos')
                             z_sos0 = signal.sosfilt_zi(self.sos)
-                            self.z_sos = np.repeat(z_sos0[:, np.newaxis, :], len(self.device.channels)-2-self._chan_offset, axis=1)
-                            
+                            self.z_sos = np.repeat(z_sos0[:, np.newaxis, :], self._EMG_chans, axis=1)
+                         
                     rms_data = np.sqrt(np.mean(filt_data**2, axis = 1))
+                   
+                    # Reshape to 2d
+                    rms_data = np.reshape(rms_data, (self.n_x,self.n_y)).T
+                  
+                    # Interpolation functions and mapping of dummy channels
+                    # Dummy channels are NaN, apply dubble filter to handle this
+                    nan_map = np.zeros_like(rms_data)
+                    nan_map[ np.isnan(rms_data) ] = 1
+                    
+                    rms_filled = rms_data.copy()
+                    rms_filled[ np.isnan(rms_data) ] = 0
+                                         
+                    f = interpolate.interp2d(self._x_grid, self._y_grid, rms_filled, kind='linear')
+                    f_nan = interpolate.interp2d(self._x_grid, self._y_grid, nan_map, kind='linear')
+                    
+                    heatmap = f(self._x_interpolate, self._y_interpolate)
+                    nan_heatmap = f_nan( self._x_interpolate, self._y_interpolate )
+                    heatmap[ nan_heatmap>0 ] = np.nan
+                   
+                    # Rotate heatmap based on tail orientation
                     if self.tail_orientation == 'Left' or self.tail_orientation == 'left': 
-                        rms_data = np.reshape(rms_data, (int(self._EMG_chans/8),8)).T
-                        
-                        f = interpolate.interp2d(self._x_grid, self._y_grid, rms_data, kind='linear')
-                        output_heatmap = f(self._x_interpolate, self._y_interpolate)
-                        
-                    elif self.tail_orientation == 'Up' or self.tail_orientation == 'up': 
-                        rms_data = np.rot90(np.reshape(rms_data, (int(self._EMG_chans/8),8)).T, 1)
-                        
-                        f = interpolate.interp2d(self._y_grid, self._x_grid, rms_data, kind='linear')
-                        output_heatmap = f(self._y_interpolate, self._x_interpolate)
-
+                        output_heatmap = heatmap  
+                    elif self.tail_orientation == 'Up' or self.tail_orientation == 'up':                      
+                        output_heatmap = np.rot90(heatmap, 1)
                     elif self.tail_orientation == 'Right' or self.tail_orientation == 'right': 
-                        rms_data = np.rot90(np.reshape(rms_data, (int(self._EMG_chans/8),8)).T, 2)
-                        
-                        f = interpolate.interp2d(self._x_grid, self._y_grid, rms_data, kind='linear')
-                        output_heatmap = f(self._x_interpolate, self._y_interpolate)
-
+                        output_heatmap = np.rot90(heatmap, 2)
                     elif self.tail_orientation == 'Down' or self.tail_orientation == 'down': 
-                        rms_data = np.rot90(np.reshape(rms_data, (int(self._EMG_chans/8),8)).T, 3)
-                        
-                        f = interpolate.interp2d(self._y_grid, self._x_grid, rms_data, kind='linear')
-                        output_heatmap = f(self._y_interpolate, self._x_interpolate)
+                        output_heatmap = np.rot90(heatmap, 3)
                     
                     self._add_final = 0
-
-                    self.window_buffer = np.hstack((self.window_buffer[:,self.window_rms_size:], np.zeros((len(self.device.channels)-2-self._chan_offset, self.window_rms_size)) ))
+                    
+                    self.window_buffer = np.hstack((self.window_buffer[:,self.window_rms_size:], np.zeros(((self._EMG_chans+len(self.dummy_chan)), self.window_rms_size)) ))
                     self.output.emit(output_heatmap)
                     
                 else:
@@ -379,7 +412,7 @@ class SamplingThread(QtCore.QObject):
                 
             # Pause the thread so that the update does not happen too fast
             time.sleep(0.01)
-            
+           
     def stop(self):
         """ Method that is executed when the thread is terminated. 
             This stop event stops the measurement and closes the connection to 

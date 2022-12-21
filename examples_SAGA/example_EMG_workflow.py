@@ -24,10 +24,10 @@ limitations under the License.
 /**
  * @file ${example_EMG_workflow.py} 
  * @brief This example shows the functionality of the impedance plotter and an
- * HD-EMG heatmap. The user has to configure the tail orientation of the grid,
- * so that the grid is adapted to 'look into the grid'. The heatmap displays 
- * the RMS value per channel, combined with linear interpolation to fill the 
- * space between channels.
+ * HD-EMG heatmap. The user can disable channels based on measured impedances.
+ * The tail orientation of the grid can be given, so that the grid is adapted 
+ * to 'look into the grid'. The heatmap displays the RMS value per channel, 
+ * combined with linear interpolation to fill the space between channels.
  *
  */
 
@@ -67,19 +67,17 @@ try:
         
         # Open a connection to the SAGA-system
         dev.open()
-    
+        
+        grid_type = '4-8-L'
+        # options:'4-8-L', '6-11-L', '6-11-S', '8-8-L', '8-8-S', '6-11-L-1', '6-11-L-2', '6-11-S-1', '6-11-S-2', '8-8-L-1', '8-8-L-2', '8-8-S-1', '8-8-S-2'
+        
         # Load the HD-EMG channel set and configuration
         print("load HD-EMG config")
         if dev.config.num_channels<64:
-            cfg = get_config("saga32_config_textile_grid_large")
-            # options: '32ch textile grid large', 'flex pcb grids', 'SAGA64 32ch textile grid large'
-            grid_type = '32ch textile grid large'
+            cfg = get_config("saga32_config_textile_grid_" + grid_type)
         else:
-            cfg = get_config("saga64_config_textile_grid_large")
-            # options: '32ch textile grid large', 'flex pcb grids', 'SAGA64 32ch textile grid large'
-            grid_type = 'SAGA64 32ch textile grid large'
+            cfg = get_config("saga64_config_textile_grid_" + grid_type)
         dev.load_config(cfg)
-        
         
         # Check if there is already a plotter application in existence
         plotter_app = QtWidgets.QApplication.instance()
@@ -90,11 +88,11 @@ try:
             
         # Define the GUI object and show it
         window = PlottingGUI(plotter_format = PlotterFormat.impedance_viewer,
-                             figurename = 'An Impedance Plot', 
-                             device = dev, 
-                             layout = 'grid', 
-                             file_storage = join(measurements_dir,"example_EMG_workflow"),
-                             grid_type = grid_type)
+                              figurename = 'An Impedance Plot', 
+                              device = dev, 
+                              layout = 'grid', 
+                              file_storage = join(measurements_dir,"example_EMG_workflow"),
+                              grid_type = grid_type)
         window.show()
         
         # Enter the event loop
@@ -122,17 +120,17 @@ try:
         # Define the GUI object and show it 
         # The tail orientation is needed so that the user looks 'into' the grid. 
         # The signal_lim parameter (in microVolts) is needed to configure the colorbar range
-        plot_window = PlottingGUI(plotter_format = PlotterFormat.signal_viewer,
+        plot_window = PlottingGUI(plotter_format = PlotterFormat.heatmap,
                                     figurename = 'An HD-EMG Heatmap', 
                                     device = dev,
-                                    tail_orientation = 'down', 
+                                    tail_orientation = 'left', 
                                     signal_lim = 150,
                                     grid_type = grid_type)
         plot_window.show()
         
         # Enter the event loop
         plotter_app.exec_()
-        
+
         # Quit and delete the Plotter application
         QtWidgets.QApplication.quit()
         del plotter_app

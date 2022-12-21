@@ -32,3 +32,4 @@ limitations under the License.
 
 from .poly5reader import Poly5Reader
 from .xdf_reader import Xdf_Reader
+from .edf_reader import Edf_Reader

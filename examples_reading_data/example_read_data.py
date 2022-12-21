@@ -43,7 +43,7 @@ sys.path.append(modules_dir)
 
 from TMSiFileFormats.file_readers import Poly5Reader
 
-data=Poly5Reader()
+data = Poly5Reader()
 # When no arguments are given, a pop-up window allows you to select the file you want to read. 
 # You can also use data=Poly5Reader(full_path) to load a file. Note that the full file path is required here.
 
@@ -56,21 +56,23 @@ ch_names = data.ch_names
 isTextileGrid = False
 
 if isTextileGrid:
-    # Specify type of conversion that needs to be applied
-    type_grid = '32ch textile grid large'
+    channel_conversion_list = np.arange(0,len(ch_names), dtype = int)
     
-    # Get the HD-EMG conversion file
-    config_file = join(modules_dir, 'TMSiSDK','_resources','HD_EMG_grid_channel_configuration.json')
-    # Open the file if it exists, notify the user if it does not
-    if exists(config_file):
-        # Get the HD-EMG conversion table
-        with open(config_file) as json_file:
-            conversion_data = json.load(json_file)
-    channel_conversion_list = np.array(conversion_data[type_grid]['channel_conversion']) - 1
+    # Detect row and column number based on channel name 
+    RCch = []
+    for i, ch in enumerate(ch_names):
+        if ch.find('R') == 0:
+            R,C = ch[1:].split('C')
+            RCch.append((R,str(C).zfill(2),i))
+    
+    # Sort data based on row and column
+    RCch.sort()
+    for ch in range(len(RCch)):
+        channel_conversion_list[ch] = RCch[ch][2]
     
     # Change the ordering of the first 32 channels (all channels on the textile grid)
-    samples[0:32,:] = samples[channel_conversion_list,:]
-    ch_names[0:32] = [ch_names[i] for i in channel_conversion_list]
+    samples = samples[channel_conversion_list,:]
+    ch_names = [ch_names[i] for i in channel_conversion_list]
     
     print(ch_names)
 

@@ -41,26 +41,38 @@ import numpy as np
 
 from TMSiSDK.error import TMSiError, TMSiErrorCode
 from TMSiSDK import sample_data_server
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
 
 _QUEUE_SIZE = 1000
 
 class Poly5Writer:
-    def __init__(self, filename):
+    def __init__(self, filename, download = False):
         self.q_sample_sets = queue.Queue(_QUEUE_SIZE)
         self.device = None
-       
-        now = datetime.now()
-        filetime = now.strftime("%Y%m%d_%H%M%S")
-        fileparts=filename.split('.')
-        if fileparts[-1]=='poly5' or fileparts[-1]=='Poly5':
-            self.filename='.'.join(fileparts[:-1])+ '-' + filetime + '.poly5'
+        
+        fileparts = filename.split('.')
+        if not download:
+            now = datetime.now()
+            filetime = now.strftime("%Y%m%d_%H%M%S")
+            if fileparts[-1]=='poly5' or fileparts[-1]=='Poly5':
+                self.filename='.'.join(fileparts[:-1])+ '-' + filetime + '.poly5'
+            else:
+                self.filename = filename + '-' + filetime + '.poly5'
         else:
-            self.filename = filename + '-' + filetime + '.poly5'
+            if fileparts[-1]=='poly5' or fileparts[-1]=='Poly5':
+                self.filename = filename
+            else:
+                self.filename = filename + '.poly5'
+            
         self._fp = None
         self._date = None
 
     def open(self, device):
-        print("Poly5Writer-open")
+        if isinstance(device, TMSiDevice):
+            self.__open_TMSiDevice(device)
+            return
+
         self.device = device
         try:
             self._fp = open(self.filename, 'wb')
@@ -89,7 +101,7 @@ class Poly5Writer:
             for (i, channel) in enumerate(self.device.channels):
                 Poly5Writer._writeSignalDescription(self._fp, i, channel.name, channel.unit_name)
                 
-            fmt='f'*self._num_channels*self._num_sample_sets_per_sample_data_block 
+            fmt = 'f'*self._num_channels*self._num_sample_sets_per_sample_data_block 
             self.pack_struct = struct.Struct(fmt)
 
             sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
@@ -102,11 +114,56 @@ class Poly5Writer:
         except:
             raise TMSiError(TMSiErrorCode.file_writer_error)
 
+    def __open_TMSiDevice(self, device):
+        self.device = device
+        try:
+            self._fp = open(self.filename, 'wb')
+            self._date = datetime.now()
+            self._sample_rate = self.device.get_device_sampling_frequency()
+            self._num_channels = self.device.get_num_channels()
+
+            # Calculate nr of sample-sets within one sample-data-block:
+            # This is the nr of sample-sets in 150 milli-seconds or when the
+            # sample-data-block-size exceeds 64kb the it will become the nr of
+            # sample-sets that fit in 64kb
+            self._num_sample_sets_per_sample_data_block = int(self._sample_rate * 0.15)
+            size_one_sample_set = self._num_channels * 4
+            if ((self._num_sample_sets_per_sample_data_block * size_one_sample_set) > 64000):
+                self._num_sample_sets_per_sample_data_block = int(64000 / size_one_sample_set)
+
+            # Write poly5-header for thsi measurement
+            Poly5Writer._writeHeader(self._fp, \
+                                        "measurement", \
+                                        self._sample_rate,\
+                                        self._num_channels,\
+                                        self._num_channels,\
+                                        0,
+                                        0,
+                                        self._date)
+            for (i, channel) in enumerate(self.device.get_device_channels()):
+                Poly5Writer._writeSignalDescription(self._fp, i, channel.get_channel_name(), channel.get_channel_unit_name())
+                
+            fmt = 'f'*self._num_channels*self._num_sample_sets_per_sample_data_block 
+            self.pack_struct = struct.Struct(fmt)
+
+            ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+
+            self._sampling_thread = ConsumerThread(self, name='poly5-writer : dev-id-' + str(self.device.get_id()))
+            self._sampling_thread.start()
+        except OSError as e:
+            print(e)
+            raise TMSiError(TMSiErrorCode.file_writer_error)
+        except:
+            raise TMSiError(TMSiErrorCode.file_writer_error)
+
     def close(self):
-        print("Poly5Writer-close")
+        # print("Poly5Writer-close")
         self._sampling_thread.stop_sampling()
         
-        sample_data_server.unregisterConsumer(self.device.id, self.q_sample_sets)
+        if isinstance(self.device, TMSiDevice):
+            ApexSampleDataServer().unregister_consumer(self.device.get_id(), self.q_sample_sets)
+        else:
+            sample_data_server.unregisterConsumer(self.device.id, self.q_sample_sets)
 
     ## Write header of a poly5 file.
     #
@@ -187,9 +244,9 @@ class Poly5Writer:
         )
         f.write(data)
         
-        sample_sets_block[n_chan-1::n_chan]=sample_sets_block[n_chan-1::n_chan] % (2**24)
+        sample_sets_block[n_chan-1::n_chan] = sample_sets_block[n_chan-1::n_chan] % (2**24)
         
-        bin=pack_struct.pack(*sample_sets_block)
+        bin = pack_struct.pack(*sample_sets_block)
         f.write(bin)
 
 class ConsumerThread(threading.Thread):
@@ -205,11 +262,11 @@ class ConsumerThread(threading.Thread):
         self._num_channels = file_writer._num_channels
         self._num_sample_sets_per_sample_data_block = file_writer._num_sample_sets_per_sample_data_block
         self._sample_sets_in_block = []
-        self.pack_struct=file_writer.pack_struct 
-        self._remaining_samples=np. array([])
+        self.pack_struct = file_writer.pack_struct 
+        self._remaining_samples = np.array([])
 
     def run(self):
-        print(self.name, " started")   
+        # print(self.name, " started")   
         
         while ((self.sampling) or (not self.q_sample_sets.empty())) :
             while not self.q_sample_sets.empty():
@@ -217,16 +274,16 @@ class ConsumerThread(threading.Thread):
                 self.q_sample_sets.task_done()
                 
                 if self._remaining_samples.size:
-                     samples=np.concatenate((self._remaining_samples,sd.samples))
+                     samples = np.concatenate((self._remaining_samples,sd.samples))
                 else:
-                    samples=np.array(sd.samples)
+                    samples = np.array(sd.samples)
                 
-                n_samp=int(len(samples)/sd.num_samples_per_sample_set)
+                n_samp = int(len(samples) / sd.num_samples_per_sample_set)
                
                 
                 try:
                     for i in range(np.int(np.floor(n_samp/self._num_sample_sets_per_sample_data_block))):
-                        self._sample_sets_in_block=samples[i*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set:(i+1)*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set]
+                        self._sample_sets_in_block = samples[i*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set : (i+1)*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set]
                         Poly5Writer._writeSignalBlock(self._fp,\
                                                         self._sample_set_block_index,\
                                                         self._date,\
@@ -255,12 +312,12 @@ class ConsumerThread(threading.Thread):
                             # Go back to end of file
                             self._fp.seek(0, os.SEEK_END)
                         
-                    i=np.int(np.floor(n_samp/self._num_sample_sets_per_sample_data_block))
-                    ind=np.arange(i*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set, n_samp*sd.num_samples_per_sample_set)
+                    i = np.int(np.floor(n_samp / self._num_sample_sets_per_sample_data_block))
+                    ind = np.arange(i*self._num_sample_sets_per_sample_data_block*sd.num_samples_per_sample_set, n_samp*sd.num_samples_per_sample_set)
                     if ind.any:
-                        self._remaining_samples=samples[ind]
+                        self._remaining_samples = samples[ind]
                     else:
-                        self._remaining_samples=np. array([])
+                        self._remaining_samples = np.array([])
 
                 except:
                     raise TMSiError(TMSiErrorCode.file_writer_error)
@@ -271,7 +328,7 @@ class ConsumerThread(threading.Thread):
             # Last data block is omitted from saving, to prevent an incomplete data block being part of the Poly5 file
             # This would result in 0s at the end of the file
             if np.shape(self._remaining_samples)[0] < self._num_sample_sets_per_sample_data_block*self._num_channels:
-                self._remaining_samples=np. array([])
+                self._remaining_samples = np.array([])
 
             else:
                 self._sample_sets_in_block = self._remaining_samples[:self._num_sample_sets_per_sample_data_block*self._num_channels]
@@ -305,10 +362,10 @@ class ConsumerThread(threading.Thread):
         # Go back to end of file
         self._fp.seek(0, os.SEEK_END)
         
-        print(self.name, " ready, closing file")
+        # print(self.name, " ready, closing file")
         self._fp.close()
         return
 
     def stop_sampling(self):
-        print(self.name, " stop sampling")
+        # print(self.name, " stop sampling")
         self.sampling = False;

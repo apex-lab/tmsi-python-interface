@@ -22,40 +22,27 @@ limitations under the License.
    #     #     #  #####    #
 
 /**
- * @file ${example_xdf_to_MNE.py} 
- * @brief This example shows how to read data from a Xdf-file to an MNE-object.
+ * @file ${example_poly5_to_edf.py} 
+ * @brief This example shows the functionality to convert all poly5-files in  
+.* a directory to edf-format. Poly5 files in subfolders are converted as well.
+ * The data is lowpass filtered to remove offset and drift  
+ * while maintaining as much as much relevant information as possible in the 
+ * conversion from 32-bit to 16-bit file format.
  */
 
 
 '''
-
 import sys
 from os.path import join, dirname, realpath
-import mne
-
-ipython = get_ipython()
-ipython.magic("matplotlib qt")
 
 Example_dir = dirname(realpath(__file__)) # directory of this file
 modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
 
-from TMSiFileFormats.file_readers import Xdf_Reader
+from TMSiFileFormats.file_formats import Poly5_to_EDF_Converter
 
-reader=Xdf_Reader(add_ch_locs=True)
-# When no filename is given, a pop-up window allows you to select the file you want to read. 
-# You can also use reader=Xdf_Reader(full_path) to load a file. Note that the full file path is required here.
-# add_ch_locs can be used to include TMSi EEG channel locations (in case xdf-file does not contain channel locations)
-
-# An XDF-file can consist of multiple streams. The output data is of the tuple type, to allow for multi stream files.
-mne_object, timestamps = reader.data, reader.time_stamps
-
-# Extract data from the first stream
-samples = mne_object[0]._data
-
-
-#%% Basis plotting commands with MNE
-mne_object[0].plot_sensors(ch_type='eeg', show_names=True) 
-mne_object[0].plot(start=0, duration=5, n_channels=5, title='Xdf Plot') 
-mne_object[0].plot_psd(fmin = 1, fmax = 100, picks = 'eeg')
+# The Poly5Converter opens recorded Poly5 files (all files in a selected directory). 
+# Both a specific file-path can be provided, as well as no path, which prompts a dialog window. 
+# Pre-processing steps (band-pass filter), are to be configured (0.1 - 100 Hz is selected in this example)
+Poly5Converter=Poly5_to_EDF_Converter(batch=True, f_c=0.1)

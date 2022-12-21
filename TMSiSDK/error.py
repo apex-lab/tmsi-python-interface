@@ -34,6 +34,8 @@ from enum import Enum, unique
 @unique
 class TMSiErrorCode(Enum):
     general_error = 0
+    missing_dll = 1
+    already_in_use_dll = 2
     device_error = 100
     device_not_connected = 101
     no_devices_found = 102

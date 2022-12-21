@@ -34,3 +34,5 @@ $activate = "./Scripts/activate"
 cd $current
 
 pip install -r .\requirements39_Windows.txt
+
+git submodule update --init --recursive

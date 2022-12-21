@@ -42,7 +42,7 @@ class Poly5Reader:
         if filename==None:
             root = tk.Tk()
 
-            filename = filedialog.askopenfilename()
+            filename = filedialog.askopenfilename(title = 'Select poly5-file', filetypes = (('poly5-files', '*.poly5'),('All files', '*.*')))
             root.withdraw()
             
         self.filename = filename

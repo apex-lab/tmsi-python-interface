@@ -42,6 +42,9 @@ from TMSiSDK import sample_data_server
 from pylsl import StreamInfo, StreamOutlet, local_clock
 from TMSiSDK.device import ChannelType
 
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+
 
 class LSLConsumer:
     '''
@@ -91,8 +94,13 @@ class LSLWriter:
         Input is an open TMSiSDK device object
         '''
 
-        print("LSLWriter-open")
         self.device = device
+        
+        if isinstance(device, TMSiDevice):
+            self.__open_TMSiDevice()
+            return
+        
+        print("LSLWriter-open")
 
         try:
             self._date = datetime.now()
@@ -140,11 +148,18 @@ class LSLWriter:
         except:
             raise TMSiError(TMSiErrorCode.file_writer_error)
 
+    def __open_TMSiDevice(self):
+        print('For APEX, the LSL_stream_writer is not available for this version of the TMSi Python Interface (v4.0.0.0)\n\n')
+        raise TMSiError(TMSiErrorCode.api_invalid_command)
+
 
     def close(self):
 
         print("LSLWriter-close")
-        sample_data_server.unregisterConsumer(self.device.id, self._consumer)
+        if isinstance(self.device, TMSiDevice):
+           ApexSampleDataServer().unregister_consumer(self.device.get_id(), self._consumer)
+        else:
+           sample_data_server.unregisterConsumer(self.device.id, self._consumer)
         # let garbage collector take care of destroying LSL outlet
         self._consumer = None
         self._outlet = None

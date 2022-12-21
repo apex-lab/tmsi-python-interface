@@ -48,7 +48,7 @@ class Xdf_Reader:
         if filename==None:
             root = tk.Tk()
 
-            filename = filedialog.askopenfilename()
+            filename = filedialog.askopenfilename(title = 'Select xdf-file', filetypes = (('xdf-files', '*.xdf'),('All files', '*.*')))
             root.withdraw()
             
         self.filename = filename
@@ -109,6 +109,24 @@ class Xdf_Reader:
             print('Reading data failed because of the following error:\n')
             raise
             
+    def add_impedances(self, imp_filename=None):
+        """Add impedances from .txt-file """
+        if imp_filename==None:
+            root = tk.Tk()
+            imp_filename = filedialog.askopenfilename(title = 'Select impedance file', filetypes = (('text files', '*.txt'),('All files', '*.*')))
+            root.withdraw()
+        impedances = []
+        
+        imp_df = pd.read_csv(imp_filename, delimiter = "\t", header=None)    
+        imp_df.columns=['ch_name', 'impedance', 'unit']
+        
+        for ch in range(len(self.data[0].info['chs'])):
+            for i_ch in range(len(imp_df)):
+                if self.data[0].info['chs'][ch]['ch_name'] == imp_df['ch_name'][i_ch]:
+                    impedances.append(imp_df['impedance'][i_ch])
+                    
+        self.data[0].impedances = impedances
+   
     def _get_ch_info(self, stream):
         # read channel labels, types, units and impedances
         labels, types, units, impedances = [], [], [], []
