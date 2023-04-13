@@ -45,12 +45,12 @@ modules_dir = normpath(join(Plotter_dir, '../..')) # directory with all modules
 from TMSiSDK import tmsi_device
 from TMSiSDK import sample_data_server
 from TMSiSDK.device import DeviceInterfaceType, DeviceState, MeasurementType, ChannelType
-
 from TMSiPlotters.plotters import PlotterFormat
 from TMSiPlotters.gui._plotter_gui import Ui_MainWindow 
 from TMSiPlotters.plotters.signal_plotter import SignalViewer
 from TMSiPlotters.plotters.hd_emg_plotter import HeatMapViewer
 from TMSiPlotters.plotters.impedance_plotter import ImpedanceViewer
+from TMSiPlotters.plotters.emg_envelope_plotter import EMGEnvelopeViewer
 from copy import copy
 
 from apex_sdk.device.tmsi_device import TMSiDevice
@@ -65,7 +65,7 @@ class PlottingGUI(QtWidgets.QMainWindow, Ui_MainWindow):
     
     def __init__(self, plotter_format, figurename, device, channel_selection = None, filter_app = None,
                  tail_orientation = None, signal_lim = None, grid_type = 'none', file_storage = None, 
-                 layout = None):
+                 layout = None, BPF_fc1 = None, BPF_fc2 = None, LPF_fc = None):
         """ Setting up the GUI's elements. 
         """
         super(PlottingGUI, self).__init__()
@@ -124,6 +124,23 @@ class PlottingGUI(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.show_DIGI_button.setVisible(False)
             self.initUI()
             self.startEvent()
+        
+        elif plotter_format == PlotterFormat.envelope:
+            self.real_time_plot = EMGEnvelopeViewer(self, device, BPF_fc1 = BPF_fc1, BPF_fc2 = BPF_fc2, LPF_fc = LPF_fc, grid_type = self.grid_type)
+            # Hide unused GUI controllers from the plotter window
+            if isinstance(device, TMSiDevice):
+                if self.device.get_device_sampling_config().LiveImpedance:
+                    self.table_live_impedance.setVisible(True)
+                self.hide_AUX_button.setVisible(False)
+                self.show_AUX_button.setVisible(False)
+                self.hide_BIP_button.setVisible(False)
+                self.show_BIP_button.setVisible(False)
+                self.hide_DIGI_button.setVisible(False)
+                self.show_DIGI_button.setVisible(False)
+            self.filter_app = None
+            self.initUI()
+            self.startEvent()
+        
             
         elif plotter_format == PlotterFormat.heatmap: 
             self.real_time_plot = HeatMapViewer(gui_handle = self, device = device, 
@@ -230,6 +247,11 @@ class PlottingGUI(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.filter_app:
             self.disable_filter_button.clicked.connect(self.filter_app.disableFilter)
             self.enable_filter_button.clicked.connect(self.filter_app.enableFilter)
+        elif self.plotter_format == PlotterFormat.envelope:
+            self.disable_filter_button.clicked.connect(self.real_time_plot.disableEnvelope)
+            self.enable_filter_button.clicked.connect(self.real_time_plot.enableEnvelope)
+            self.disable_filter_button.setText('Disable Envelope')
+            self.enable_filter_button.setText('Enable Envelope')
         else:
             self.disable_filter_button.setVisible(False)
             self.enable_filter_button.setVisible(False)

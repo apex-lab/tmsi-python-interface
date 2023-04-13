@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ limitations under the License.
 '''
 
 from .tmsi_utilities.singleton import Singleton
+from .tmsi_utilities.tmsi_logger import TMSiLoggerActivity
 from .device.tmsi_device_enums import *
 from .device.devices.apex.apex_device import ApexDevice
 
@@ -63,6 +64,7 @@ class TMSiSDK(metaclass = Singleton):
         """
         if dev_type == DeviceType.apex:
             ApexDevice.discover(dr_interface, num_retries)
+            TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: discover devices")
             self.__apex_device_list = ApexDevice.get_device_list(dr_interface)
             self.__apex_dongle_list = ApexDevice.get_dongle_list()
             return (self.__apex_device_list, self.__apex_dongle_list)
@@ -101,6 +103,7 @@ class TMSiSDK(metaclass = Singleton):
         """
         if dev_type == DeviceType.apex:
             version = ApexDevice.get_driver_version()
+            TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: get driver version")
             dll_version = "".join([chr(i) for i in version.DllVersionString if i != 0])
             usb_version = "".join([chr(i) for i in version.LibUsbVersionString if i != 0])
             return (dll_version, usb_version)

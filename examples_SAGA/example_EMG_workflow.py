@@ -123,7 +123,7 @@ try:
         plot_window = PlottingGUI(plotter_format = PlotterFormat.heatmap,
                                     figurename = 'An HD-EMG Heatmap', 
                                     device = dev,
-                                    tail_orientation = 'left', 
+                                    tail_orientation = 'down', 
                                     signal_lim = 150,
                                     grid_type = grid_type)
         plot_window.show()

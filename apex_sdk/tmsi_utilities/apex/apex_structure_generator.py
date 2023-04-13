@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ from ...device.devices.apex.apex_device import ApexDevice
 
 
 class ApexStructureGenerator:
+    """Class to handle the generation of structures useful for the ApexDevice"""
     def create_card_record_configuration(
         device: ApexDevice,
         start_control: ApexEnums.ApexStartCardRecording,
@@ -97,6 +98,15 @@ class ApexStructureGenerator:
         return config
 
     def from_qdatetime_to_tmsitime(qdatetime, tmsi_time):
+        """Convert QDateTime to TMSiTime.
+
+        :param qdatetime: QDateTime.
+        :type qdatetime: QDateTime
+        :param tmsi_time: TMSiTime.
+        :type tmsi_time: TMSiTime
+        :return: TMSiTime.
+        :rtype: TMSiTime
+        """
         tmsi_time.Seconds = qdatetime.time().second()
         tmsi_time.Minutes = qdatetime.time().minute()
         tmsi_time.Hours = qdatetime.time().hour()
@@ -106,6 +116,15 @@ class ApexStructureGenerator:
         return tmsi_time
 
     def from_datetime_to_tmsitime(date_time, tmsi_time):
+        """Convert datetime to TMSiTime.
+
+        :param date_time: datetime.
+        :type date_time: datetime
+        :param tmsi_time: TMSiTime.
+        :type tmsi_time: TMSiTime
+        :return: TMSiTime.
+        :rtype: TMSiTime
+        """
         tmsi_time.Seconds = date_time.time().second
         tmsi_time.Minutes = date_time.time().minute
         tmsi_time.Hours = date_time.time().hour
@@ -116,6 +135,15 @@ class ApexStructureGenerator:
 
     
     def from_tmsitime_to_datetime(tmsi_time, date_time):
+        """Convert TMSiTime to datetime.
+
+        :param tmsi_time: TMSiTime.
+        :type tmsi_time: TMSiTime
+        :param date_time: datetime.
+        :type date_time: datetime
+        :return: datetime.
+        :rtype: datetime
+        """
         date_time = datetime.datetime(
             tmsi_time.Year + 1900,
             tmsi_time.Month + 1,

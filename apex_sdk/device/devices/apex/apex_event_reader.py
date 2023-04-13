@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,10 +38,19 @@ from .apex_device import ApexDevice, TMSiEvent
 from ....tmsi_utilities.tmsi_logger import TMSiLogger
 
 class ApexEventReader(TMSiEventReader):
+    """A class to handle events from Apex"""
     def __init__(self, name="Apex Event Reader"):
+        """Initialize the event reader.
+
+        :param name: name of the event reader, defaults to "Apex Event Reader"
+        :type name: str, optional
+        """
         super().__init__(name)
 
     def start(self):
+        """
+        Starts the event reader.
+        """
         ApexDevice.reset_device_event_buffer()
         self._reading_thread.start()
 

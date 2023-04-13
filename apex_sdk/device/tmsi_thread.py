@@ -34,24 +34,48 @@ import threading
 import time
 
 
-class SamplingThread(threading.Thread):
-    def __init__(self, sampling_function, pause = 0.01, name = "Sampling Thread"):
+class TMSiThread(threading.Thread):
+    """A class to handle all the sampling threads."""
+    def __init__(self, looping_function, pause = 0.01, name = "Sampling Thread"):
+        """_summary_
+
+        :param looping_function: the function which must be exectuted.
+        :type looping_function: function
+        :param pause: pause time between each loop of the thread, defaults to 0.01
+        :type pause: float, optional
+        :param name: name of the thread, defaults to "Sampling Thread"
+        :type name: str, optional
+        """
         super().__init__()
         self.__name = name
-        self.__sampling_function = sampling_function
+        self.__looping_function = looping_function
         self.__pause = pause
 
     def get_pause(self):
+        """Get the pause time of the thread.
+
+        :return: the pause time between each loop of the thread.
+        :rtype: float
+        """
         return self.__pause
     
     def run(self):
-        self.__sampling = True
-        while self.__sampling:
-            self.__sampling_function()
+        """Run the thread.
+        """
+        self.__looping = True
+        while self.__looping:
+            self.__looping_function()
             time.sleep(self.__pause)
 
     def set_pause(self, pause):
+        """Set the pause time of the thread.
+
+        :param pause: the pause time between each loop of the thread.
+        :type pause: float
+        """
         self.__pause = pause
 
     def stop(self):
-        self.__sampling = False
+        """Stop the thread.
+        """
+        self.__looping = False

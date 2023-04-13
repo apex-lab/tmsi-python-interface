@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,7 +46,15 @@ class TMSiErrorCode(Enum):
     file_writer_error = 300
 
 class TMSiError(Exception):
+    """Class to handle TMSi errors."""
     def __init__(self, error_code, dll_error_code = None):
+        """Initialize TMSi error.
+
+        :param error_code: error code
+        :type error_code: TMSiErrorCode
+        :param dll_error_code: error code coming from the dll, defaults to None
+        :type dll_error_code: TMSiDeviceRetVal, optional
+        """
         self.dll_error_code = None
         self.error_code = error_code
         if dll_error_code:

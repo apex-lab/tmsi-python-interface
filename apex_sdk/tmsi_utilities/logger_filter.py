@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,21 @@ ACTIVITY_LOG = 26
 
 
 class LoggerFilter(object):
+    """Class to filter logs."""
+
     def __init__(self, level):
+        """Initialize the log filter.
+
+        :param level: level to show.
+        :type level: int
+        """
         self.__level = level
     def filter(self, log_record):
+        """Filter the log.
+
+        :param log_record: log to filter.
+        :type log_record: logging.log
+        :return: True if the log level is correct, False otherwise.
+        :rtype: bool
+        """
         return log_record.levelno == self.__level

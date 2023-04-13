@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ limitations under the License.
 
 import sys
 from os.path import join, dirname, realpath
+from datetime import datetime, timedelta
+
 Example_dir = dirname(realpath(__file__)) # directory of this file
 modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
@@ -42,7 +44,6 @@ from apex_sdk.tmsi_sdk import TMSiSDK, DeviceInterfaceType, DeviceType, DeviceSt
 from apex_sdk.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 from apex_sdk.device import ApexStructureGenerator, ApexEnums
 
-from datetime import datetime, timedelta
 
 
 try:
@@ -58,9 +59,9 @@ try:
         dev.open()
         
         # Create device card recording configuration
-        # Set start and stop time to 10 and 15 minutes from now
+        # Set start and stop time to 1 and 2 minutes from now
         # Start control can be either 'Time' or 'Button', start and stop time
-        # are ignored when 'Button is used'
+        # are ignored when 'Button' is used
         config = ApexStructureGenerator.create_card_record_configuration(
             device = dev,
             start_control = ApexEnums.ApexStartCardRecording.Time,

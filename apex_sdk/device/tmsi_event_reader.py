@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,19 +30,31 @@ limitations under the License.
 
 '''
 
-from .threads.sampling_thread import SamplingThread
+from .tmsi_thread import TMSiThread
 
 class TMSiEventReader:
+    """A class to interface TMSi event readers."""
     def __init__(self, name = "Event Reader"):
+        """Initialize the event reader.
+
+        :param name: name of the event reader, defaults to "Event Reader"
+        :type name: str, optional
+        """
         self._name = name
-        self._reading_thread = SamplingThread(
-            sampling_function = self._reading_function,
+        self._reading_thread = TMSiThread(
+            looping_function = self._reading_function,
             pause = 0.5)
     
     def start(self):
+        """Start the event reader.
+
+        :raises NotImplementedError: Must be overridden by the child class.
+        """
         raise NotImplementedError("method not available for this reader")
 
     def stop(self):
+        """Stop the event reader.
+        """
         self._reading_thread.stop()
         
     def _reading_function(self):

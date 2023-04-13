@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ try:
         dev.open()
     
         # Choose the desired DR-DS interface type 
-        dev.config.set_interface_type(DeviceInterfaceType.optical)
+        dev.config.set_interface_type(DeviceInterfaceType.usb)
         
         # Close the connection to the device (with the original interface type)
         dev.close()
@@ -70,7 +70,7 @@ try:
         time.sleep(1)
         
     # Discover the device object with the new interface type
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
+    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.optical, 
                                          DeviceInterfaceType.usb)
     if (len(discoveryList) > 0):
         # Create the device object to interface with the SAGA-system.

@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,13 @@ limitations under the License.
 from ....tmsi_channel import TMSiChannel, ChannelType
 
 class ApexChannel(TMSiChannel):
+    """A class to handle Apex channels."""
     def set_device_channel_information(self, channel_metadata):
+        """Set the information of the channel.
+
+        :param channel_metadata: channel metadata information 
+        :type channel_metadata: list[TMSiChannelMetadata]
+        """
         self._type = ChannelType(channel_metadata.ChannelType)
         self._format = channel_metadata.ChannelFormat
         self._chan_divider = channel_metadata.ChanDivider

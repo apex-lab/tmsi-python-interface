@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,11 +32,13 @@ limitations under the License.
 
 import time
 import os
+from functools import wraps
 
 from .tmsi_logger import TMSiLoggerPerformance
 
 
 def LogPerformances(func):
+    @wraps(func)
     def performance_logger(*args, **kwargs):
         if "TMSi_ENV" in os.environ:
             env = os.environ["TMSi_ENV"]

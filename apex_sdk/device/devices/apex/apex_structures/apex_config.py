@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,10 @@ from xml.dom import minidom
 from ..apex_API_enums import *
 
 class ApexConfig():
+    """Class to handle the configuration of the Apex."""
     def __init__(self):
+        """Initialize the configuration.
+        """
         self.__base_sample_rate = TMSiBaseSampleRate.Decimal
         self.__channels = []
         self.__impedance_channels = []
@@ -45,6 +48,13 @@ class ApexConfig():
         self.__sampling_frequency = 0
 
     def export_to_xml(self, filename):
+        """Export the current configuration to xml file.
+
+        :param filename: filename where to save the configuration.
+        :type filename: str
+        :return: True if succeded, False if failed.
+        :rtype: bool
+        """
         try:
             root = ET.Element("ApexConfig")
             xml_device = ET.SubElement(root, "Device")
@@ -65,6 +75,13 @@ class ApexConfig():
             return False
 
     def import_from_xml(self, filename):
+        """Import the configuration from a file to the device.
+
+        :param filename: filename where to take the configuration from.
+        :type filename: str
+        :return: True if succeded, False if failed.
+        :rtype: bool
+        """
         try:
             tree = ET.parse(filename)
             root = tree.getroot()
@@ -97,35 +114,85 @@ class ApexConfig():
             return False
     
     def get_channels(self):
+        """Get channels of the device.
+
+        :return: list of apex channels.
+        :rtype: list[ApexChannel]
+        """
         return self.__channels
 
     def get_impedance_channels(self):
+        """Get impedance channels of the device.
+
+        :return: list of impedance channels.
+        :rtype: list[ApexImpedanceChannel]
+        """
         return self.__impedance_channels
     
     def get_impedance_limit(self):
+        """Get the impedance limit.
+
+        :return: impedance limit of the device
+        :rtype: int
+        """
         return self.__impedance_limit
 
     def get_live_impedance(self):
+        """Get live impedance
+
+        :return: live impedance on or off
+        :rtype: TMSiLiveImpedance
+        """
         return self.__live_impedance
 
     def get_sample_rate(self):
+        """Get sample rate
+
+        :return: base sample rate.
+        :rtype: TMSiBaseSampleRate
+        """
         return self.__base_sample_rate
 
     def get_sampling_frequency(self):
+        """Get sampling frequency
+
+        :return: sampling frequency
+        :rtype: int
+        """
         return self.__sampling_frequency
     
     def set_channels(self, channels):
+        """Set channels of the device
+
+        :param channels: list of apex channels
+        :type channels: list[ApexChannels]
+        """
         self.__channels = channels
 
     def set_impedance_channels(self, channels):
+        """Set impedance channels of the device.
+
+        :param channels: list of impedance channels.
+        :type channels: list[ApexImpedanceChannel]
+        """
         self.__impedance_channels = channels
         
     def set_device_sampling_config(self, device_sampling_config):
+        """Set device sampling configuration
+
+        :param device_sampling_config: sampling configuration for the device.
+        :type device_sampling_config: TMSiDevSamplingCfg
+        """
         self.__base_sample_rate = device_sampling_config.BaseSampleRate
         self.__impedance_limit = device_sampling_config.ImpedanceLimit
         self.__live_impedance = device_sampling_config.LiveImpedance
 
     def set_sampling_frequency(self, sampling_frequency):
+        """Set the sampling frequency
+
+        :param sampling_frequency: sampling frequency
+        :type sampling_frequency: int
+        """
         self.__sampling_frequency = sampling_frequency
 
     def __prettify(elem):

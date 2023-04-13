@@ -178,7 +178,8 @@ class ImpedanceViewer():
             self.e = pg.PlotCurveItem()
             self.e.setData(-x_ears, y_ears, pen=pg.mkPen((165, 165, 165), width=5))
             self.RealTimePlotWidget.window.addItem(self.e)
-    
+            
+            n_skip = 0
             # Set the position for each indicator
             for i in range(self.n_chan):
                 if i == 0:
@@ -190,7 +191,10 @@ class ImpedanceViewer():
                     self.spots[i]['pos'] = (0.05, -0.6)
                 else:
                     if isinstance(self.device, TMSiDevice):
-                        idx_ch = np.where("'" + chs[i][0] + "'" == chLocs['name'])[0][0]
+                        if len(chs) < 32:
+                            if i in [9, 16]:
+                                n_skip +=4
+                        idx_ch =i-1+n_skip
                         
                         x=chLocs['radius'].values[idx_ch]*np.sin(np.deg2rad(chLocs['theta'].values[idx_ch]))
                         y=chLocs['radius'].values[idx_ch]*np.cos(np.deg2rad(chLocs['theta'].values[idx_ch]))

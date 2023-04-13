@@ -96,6 +96,8 @@ class SagaDevice(Device):
         self._last_error_code = TMSiDeviceRetVal.TMSI_OK
         self._sampling_thread = None
         self._measurement_type = MeasurementType.normal
+        self._masked_channels=[]
+        self._mask_functions=[]
 
     @property
     def id(self):
@@ -219,6 +221,18 @@ class SagaDevice(Device):
         if (self._last_error_code != TMSiDeviceRetVal.TMSI_OK):
             raise TMSiError(TMSiErrorCode.device_error)
 
+    def apply_masks(self, n_channels, masks):
+        if not isinstance(n_channels, list):
+            print("n_channels must be a list of integers")
+            return
+        if not isinstance(masks, list):
+            print("masks must be a list of functions")
+            return
+        self._masked_channels=n_channels
+        self._mask_functions=masks
+
+        if hasattr(self, "_conversion_thread"):
+            self._conversion_thread.apply_masks(self._masked_channels, self._mask_functions)
 
     def open(self):
         """ Opens the connection to the device.
@@ -314,6 +328,8 @@ class SagaDevice(Device):
             self._sampling_thread.initialize(self._device_handle, self._imp_channels, False)
 
         self._conversion_thread = _ConversionThread(sampling_thread = self._sampling_thread)
+        
+        self._conversion_thread.apply_masks(self._masked_channels, self._mask_functions)
 
         self._sampling_thread.start()
         self._conversion_thread.start()
@@ -1041,6 +1057,8 @@ class _ConversionThread(threading.Thread):
         # sort channels per channel type
         self._float_chan=[]   
         self._sensor_chan=[]
+        self._masked_channels=[]
+        self._mask_functions=[]
         self._basic_conversion={}
         for j in range(len(self.channels)):
             if (self.channels[j].format == 0x0020):
@@ -1055,7 +1073,11 @@ class _ConversionThread(threading.Thread):
                             self._basic_conversion[conversion_factor]=[j]
                         else:
                             self._basic_conversion[conversion_factor].append(j)
-        
+    
+    def apply_masks(self, channels, masks):
+        self._masked_channels=channels
+        self._mask_functions=masks
+    
     def run(self):
         self.sampling = True
         
@@ -1086,6 +1108,10 @@ class _ConversionThread(threading.Thread):
                     #conversion of float channels
                     for j in self._float_chan:
                         sample_mat[j]=float_to_uint(sample_mat[j]) 
+                        
+                    # apply mask to channels
+                    for j in range(len(self._masked_channels)):
+                        sample_mat[self._masked_channels[j]] = self._mask_functions[j](sample_mat[self._masked_channels[j]])
                     
                     # Check sample counter integrity
                     if self._warn_message:

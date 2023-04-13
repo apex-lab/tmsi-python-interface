@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import time
 
 from ....tmsi_errors.error import TMSiError, TMSiErrorCode
 from ....tmsi_utilities.decorators import LogPerformances
+from ....tmsi_utilities.tmsi_logger import TMSiLoggerActivity
 
 from ...tmsi_device import TMSiDevice
 from ...tmsi_device_enums import *
@@ -194,16 +195,20 @@ class ApexDevice(TMSiDevice):
         header, metadata = self.get_device_card_file_info(file_id)
         n_of_samples = metadata.NumberOfSamples
         self.start_download_file(file_id, filename, n_of_samples)
-
+        self.__user_abort = False
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: start download")
         while True:
             percentage = self.__measurement.get_download_percentage()
             if percentage >= 100:
                 break
             if self.__measurement.is_timeout():
                 break
+            if self.__user_abort:
+                break
             time.sleep(0.1)
 
         self.stop_download_file()
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: stop download")
 
     @LogPerformances
     def export_configuration(self, filename: str):
@@ -214,11 +219,16 @@ class ApexDevice(TMSiDevice):
         :raises TMSiError: TMSiErrorCode.file_writer_error if export configuration fails.
         :raises TMSiError: TMSiErrorCode.device_not_connected if not connected.
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: export configuration")
         if self.__info.get_state() == DeviceState.connected:
+            TMSiLoggerActivity().log("APEX-SDK->>APEX-API: export configuration")
             if self.__config.export_to_xml(filename):
+                TMSiLoggerActivity().log("APEX-API->>APEX-SDK: export succeded")
                 return
             else:
+                TMSiLoggerActivity().log("APEX-API->>APEX-SDK: export failed file write error")
                 raise TMSiError(error_code = TMSiErrorCode.file_writer_error)
+        TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: export failed device not connected")
         raise TMSiError(
             error_code = TMSiErrorCode.device_not_connected)
     
@@ -231,25 +241,33 @@ class ApexDevice(TMSiDevice):
         :raises TMSiError: TMSiErrorCode.general_error if import configuration fails.
         :raises TMSiError: TMSiErrorCode.device_not_connected if not connected.
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: import configuration")
         if self.__info.get_state() == DeviceState.connected:
+            TMSiLoggerActivity().log("APEX-SDK->>APEX-API: import configuration")
             if self.__config.import_from_xml(filename):
                 self.__set_device_channel_config(
                     [ch.get_channel_name() for ch in self.__config.get_channels()],
                     [i for i in range(len(self.__config.get_channels()))]
                 )
+                TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set channel configuration")
                 self.__set_device_reference_config(
                     [ch.is_reference() for ch in self.__config.get_channels()],
                     [i for i in range(len(self.__config.get_channels()))]
                 )
+                TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device reference configuration")
                 self.__set_device_sampling_config(
                     frequency = TMSiBaseSampleRate(self.__config.get_sample_rate()),
                     impedance_limit = self.__config.get_impedance_limit(),
                     live_impedance = TMSiLiveImpedance(self.__config.get_live_impedance())
                 )
+                TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device sampling configuration")
                 self.__load_config_from_device()
+                TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get configuration")
                 return
             else:
+                TMSiLoggerActivity().log("APEX-API->>APEX-SDK: import failed general error")
                 raise TMSiError(error_code = TMSiErrorCode.general_error)
+        TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: import failed device not connected")
         raise TMSiError(
             error_code = TMSiErrorCode.device_not_connected)
     
@@ -262,6 +280,7 @@ class ApexDevice(TMSiDevice):
         :return: Configuration of the card recording.
         :rtype: TMSiDevCardRecCfg
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get card recording configuration")
         if self.__info.get_state() == DeviceState.connected:
             return self.__get_device_card_recording_config()
         raise TMSiError(
@@ -276,6 +295,7 @@ class ApexDevice(TMSiDevice):
         :return: Configuration of the card recording.
         :rtype: TMSiDevCardStatus
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get card status")
         if self.__info.get_state() == DeviceState.connected:
             return self.__get_device_card_status()
         raise TMSiError(
@@ -290,10 +310,11 @@ class ApexDevice(TMSiDevice):
         :return: The list of channels
         :rtype: list[ApexChannel]
         """
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-SDK: get device active channels")
         return self.get_device_channels()
     
     @LogPerformances
-    def get_device_card_file_info(self, file_id: int) -> tuple[TMSiFileMetadataHeader, TMSiDevCardFileDetails]:
+    def get_device_card_file_info(self, file_id: int) -> tuple:
         """Gets the information of the file on the device's card.
 
         :param file_id: Id of the file to be investigated.
@@ -303,6 +324,7 @@ class ApexDevice(TMSiDevice):
         :return: A tuple with file metadata and file details.
         :rtype: tuple[TMSiFileMetadataHeader, TMSiDevCardFileDetails]
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get card file info")
         if self.__info.get_state() == DeviceState.connected:
             metadata, _ = self.__get_device_card_file_metadata(file_id)
             header = self.__get_device_card_file_metadata_header(file_id)
@@ -311,7 +333,7 @@ class ApexDevice(TMSiDevice):
             error_code = TMSiErrorCode.device_not_connected)
 
     @LogPerformances
-    def get_device_card_file_list(self) -> list[TMSiDevCardFileInfo]:
+    def get_device_card_file_list(self) -> list:
         """Gets the list of files available on the device's card.
 
         :raises TMSiError: TMSiErrorCode.device_error if get card file list fails.
@@ -319,13 +341,14 @@ class ApexDevice(TMSiDevice):
         :return: A list of file info.
         :rtype: list[TMSiDevCardFileInfo]
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get card file list")
         if self.__info.get_state() == DeviceState.connected:
             return self.__get_device_card_file_list()
         raise TMSiError(
             error_code = TMSiErrorCode.device_not_connected)
     
     @LogPerformances
-    def get_device_channels(self) -> list[ApexChannel]:
+    def get_device_channels(self) -> list:
         """Gets the list of channels.
 
         :raises TMSiError: TMSiErrorCode.device_error if get channels from the device fails.
@@ -333,10 +356,13 @@ class ApexDevice(TMSiDevice):
         :return: The list of channels
         :rtype: list[ApexChannel]
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: get device channels request")
         if self.__info.get_state() == DeviceState.sampling:
+            TMSiLoggerActivity().log("APEX-SDK->>APEX-SDK: device is sampling, get device channel from configuration")
             return self.__config.get_channels()
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device channels")
         device_channel_metadata, device_cycling_state_metadata = self.__get_device_sample_metadata()
         device_channel_name_list, device_channel_alt_name_list = self.__get_device_channel_config()
         device_reference_config = self.__get_device_reference_config()
@@ -354,6 +380,7 @@ class ApexDevice(TMSiDevice):
             channels.append(channel)
         self.__config.set_channels(channels)
         self.__get_device_impedance_metadata()
+        TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: get device channels response")
         return self.__config.get_channels()
     
     @LogPerformances
@@ -376,6 +403,7 @@ class ApexDevice(TMSiDevice):
         :return: return value of the call
         :rtype: TMSiDeviceRetVal
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device data")
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
         return TMSiGetDeviceData(
@@ -395,7 +423,7 @@ class ApexDevice(TMSiDevice):
         return self.__device_handle.value
 
     @LogPerformances
-    def get_device_impedance_channels(self) -> list[ApexImpedanceChannel]:
+    def get_device_impedance_channels(self) -> list:
         """Gets the list of impedance channels.
 
         :raises TMSiError: TMSiErrorCode.device_error if get channels from the device fails.
@@ -403,6 +431,7 @@ class ApexDevice(TMSiDevice):
         :return: The list of channels
         :rtype: list[ApexChannel]
         """
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-SDK: get device impedance channel")
         self.get_device_channels()
         return self.__config.get_impedance_channels()
     
@@ -423,6 +452,7 @@ class ApexDevice(TMSiDevice):
         :return: return value of the call
         :rtype: TMSiDeviceRetVal
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device impedance data")
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
         return TMSiGetDeviceImpedanceData(
@@ -440,7 +470,9 @@ class ApexDevice(TMSiDevice):
         :return: the device info report.
         :rtype: TMSiDevInfoReport
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: get device info report")
         if self.__info.get_state() == DeviceState.connected:
+            TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device info report")
             device_info_report = self.__get_device_info_report()
             self.__info.set_device_info_report(device_info_report)
             return device_info_report
@@ -459,6 +491,7 @@ class ApexDevice(TMSiDevice):
         :return: interface status of the device.
         :rtype: TMSiInterfaceStatus
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device interface status")
         if self.__info.get_state() == DeviceState.connected:
             device_interface_status = self.__get_device_interface_status(interface)
             return device_interface_status
@@ -466,7 +499,7 @@ class ApexDevice(TMSiDevice):
             error_code = TMSiErrorCode.device_not_connected)
 
     @LogPerformances
-    def get_device_list(dr_interface: DeviceInterfaceType) -> list['ApexDevice']:
+    def get_device_list(dr_interface: DeviceInterfaceType) -> list:
         """Gets the list of available devices.
 
         :param dr_interface: interface to check.
@@ -496,6 +529,7 @@ class ApexDevice(TMSiDevice):
         :return: device power status.
         :rtype: TMSiDevPowerStatus
         """
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device power status")
         if self.__info.get_state() == DeviceState.connected:
             return self.__get_device_power_status()
         raise TMSiError(
@@ -510,10 +544,14 @@ class ApexDevice(TMSiDevice):
         :return: device sampling configuration
         :rtype: TMSiDevSamplingCfg
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: get device sampling configuration request")
         if self.__info.get_state() == DeviceState.connected:
+            TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device sampling configuration")
             device_sampling_config = self.__get_device_sampling_config()
             self.__config.set_device_sampling_config(device_sampling_config)
+            TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: get device sampling configuration response")
             return device_sampling_config
+        TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: get device sampling configuration impossible, device not connected")
         raise TMSiError(
             error_code = TMSiErrorCode.device_not_connected)
 
@@ -551,6 +589,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device time")
         return self.__get_device_rtc()
 
     @LogPerformances
@@ -563,7 +602,7 @@ class ApexDevice(TMSiDevice):
         return ApexDevice.__DEVICE_TYPE
 
     @LogPerformances
-    def get_dongle_list() -> list[ApexDongle]:
+    def get_dongle_list() -> list:
         """Returns the list of available dongles.
 
         :return: list of available dongles.
@@ -597,7 +636,7 @@ class ApexDevice(TMSiDevice):
         return self.__measurement.get_download_percentage()
     
     @LogPerformances
-    def get_driver_version() -> tuple[str, str]:
+    def get_driver_version() -> tuple:
         """Gets the version of the DLL and USB drivers.
 
         :raises TMSiError: TMSiErrorCode.device_error if it fails.
@@ -701,8 +740,10 @@ class ApexDevice(TMSiDevice):
         :raises TMSiError: TMSiErrorCode.device_error if get time from the device fails.
         :raises TMSiError: TMSiErrorCode.no_devices_found if device not found.
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: open connection")
         self.__info.set_dongle_id(dongle_id)
         if self.__info.get_id() != ApexConst.TMSI_DEVICE_ID_NONE:
+            TMSiLoggerActivity().log("APEX-SDK->>APEX-DLL: open connection")
             self.__last_error_code = TMSiOpenInterface(
                 pointer(self.__device_handle),
                 dongle_id,
@@ -721,17 +762,19 @@ class ApexDevice(TMSiDevice):
                     self.__info.get_dr_interface().value)
 
             if (self.__last_error_code == TMSiDeviceRetVal.TMSiStatusOK):
+                    TMSiLoggerActivity().log("APEX-API->>APEX-SDK: open connection succeeded")
                     # The device is opened succesfully. Update the device information.
                     self.__info.set_state(DeviceState.connected)
-
                     # Read the device's configuration
                     self.__load_config_from_device()
 
             else:
+                TMSiLoggerActivity().log("APEX-API->>APEX-SDK: open connection failed, device error")
                 raise TMSiError(
                     error_code = TMSiErrorCode.device_error,
                     dll_error_code = self.__last_error_code)
         else:
+            TMSiLoggerActivity().log("APEX-SDK->>TMSi-SDK: open connection failed, no device found")
             raise TMSiError(
                 error_code = TMSiErrorCode.no_devices_found)
     
@@ -764,6 +807,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: reset device card")
         self.__reset_device_card()
     
     @LogPerformances
@@ -804,9 +848,12 @@ class ApexDevice(TMSiDevice):
         :raises TMSiError: TMSiErrorCode.device_error if reset fails.
         :raises TMSiError: TMSiErrorCode.device_not_connected if not connected.
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: reset to factory")
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: reset to factory")
         self.__set_device_factory_default()
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device configuration")
         self.__load_config_from_device()
 
     @LogPerformances
@@ -822,13 +869,15 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device card recording configuration")
         self.__set_device_card_recording_config(config)
+        TMSiLoggerActivity().log("APEX-API->>APEX-SDK: get device card recording configuration")
         return self.__get_device_card_recording_config()
     
     @LogPerformances
     def set_device_channel_names(self, 
-        names: list[str], 
-        indices: list[int]) -> list[ApexChannel]:
+        names: list, 
+        indices: list) -> list:
         """Sets the device channel names
 
         :param names: names to be set.
@@ -850,6 +899,7 @@ class ApexDevice(TMSiDevice):
         for index in indices:
             if not isinstance(index, int):
                 raise TypeError("indices must be integers")
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device channel configuration")
         self.__set_device_channel_config(names, indices)
         return self.get_device_channels()
 
@@ -865,6 +915,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device download file request")
         self.__last_error_code = TMSiSetDeviceCardFileRequest(
             self.__device_handle,
             pointer(file_request)
@@ -887,6 +938,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device impedance acquisition request")
         self.__last_error_code = TMSiSetDeviceImpedanceRequest(
             self.__device_handle,
             pointer(measurement_request)
@@ -894,6 +946,7 @@ class ApexDevice(TMSiDevice):
         if (self.__last_error_code == TMSiDeviceRetVal.TMSiStatusOK):
             return
         else:
+            TMSiLoggerActivity().log("APEX-API->>APEX-SDK: start failed with error {}".format(self.__last_error_code))
             raise TMSiError(
                 TMSiErrorCode.device_error,
                 self.__last_error_code)
@@ -914,6 +967,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device interface configuration")
         self.__set_device_interface_config(
             device_interface = device_interface,
             control = control
@@ -922,8 +976,8 @@ class ApexDevice(TMSiDevice):
 
     @LogPerformances
     def set_device_references(self, 
-        list_references: list[int], 
-        list_indices: list[int]):
+        list_references: list, 
+        list_indices: list):
         """Sets the channels to be used as reference.
 
         :param list_references: list of reference values.
@@ -937,6 +991,7 @@ class ApexDevice(TMSiDevice):
         :return: list of new channels.
         :rtype: list[ApexChannel]
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: set device channels configuration")
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
         for index in list_indices:
@@ -945,6 +1000,7 @@ class ApexDevice(TMSiDevice):
         for reference in list_references:
             if not isinstance(reference, int):
                 raise TypeError("references must be integers")
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device reference configuration")
         self.__set_device_reference_config(
             list_references = list_references,
             list_indices = list_indices
@@ -969,8 +1025,10 @@ class ApexDevice(TMSiDevice):
         :return: the new sampling configuration
         :rtype: TMSiDevSamplingCfg
         """
+        TMSiLoggerActivity().log("TMSi-SDK->>APEX-SDK: set device sampling configuration")
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device sampling configuration")
         self.__set_device_sampling_config(
             frequency = sampling_frequency,
             live_impedance = live_impedance,
@@ -989,12 +1047,14 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device sampling request")
         self.__last_error_code = TMSiSetDeviceSamplingRequest(
             self.__device_handle, 
             pointer(measurement_request))
         if (self.__last_error_code == TMSiDeviceRetVal.TMSiStatusOK):
             return
         else:
+            TMSiLoggerActivity().log("APEX-API->>APEX-SDK: start failed with error {}".format(self.__last_error_code))
             raise TMSiError(
                 TMSiErrorCode.device_error,
                 self.__last_error_code)
@@ -1010,6 +1070,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.connected:
             raise TMSiError(error_code = TMSiErrorCode.device_not_connected)
+        TMSiLoggerActivity().log("APEX-SDK->>APEX-API: set device time")
         self.__set_device_rtc(datetime)
     
     @LogPerformances
@@ -1032,6 +1093,7 @@ class ApexDevice(TMSiDevice):
             self.__download_impedance_report(file_id, filename)
         self.__measurement = MeasurementType.APEX_DOWNLOAD(self, file_id, n_of_samples)
         self.__info.set_state(DeviceState.sampling)
+        TMSiLoggerActivity().log("TMSi-SDK->>{}: start".format(self.__measurement.get_name()))
         self.__measurement.start()
         
     @LogPerformances
@@ -1054,6 +1116,7 @@ class ApexDevice(TMSiDevice):
             self.__measurement.set_sampling_pause(thread_refresh)
             self.__measurement.set_conversion_pause(thread_refresh)
         self.__info.set_state(DeviceState.sampling)
+        TMSiLoggerActivity().log("TMSi-SDK->>{}: start".format(self.__measurement.get_name()))
         self.__measurement.start()
         
     @LogPerformances
@@ -1064,6 +1127,7 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
+        TMSiLoggerActivity().log("TMSi-SDK->>{}: stop".format(self.__measurement.get_name()))
         self.__measurement.stop()
         self.__info.set_state(DeviceState.connected)
 
@@ -1078,8 +1142,15 @@ class ApexDevice(TMSiDevice):
         """
         if self.__info.get_state() != DeviceState.sampling:
             raise TMSiError(error_code = TMSiErrorCode.api_invalid_command)
+        TMSiLoggerActivity().log("TMSi-SDK->>{}: stop".format(self.__measurement.get_name()))
         self.__measurement.stop()
         self.__info.set_state(DeviceState.connected)
+    
+    @LogPerformances
+    def user_abort_download(self):
+        """Interrupts the download after user abort command.
+        """
+        self.__user_abort = True
     
     @LogPerformances
     def __initialize():

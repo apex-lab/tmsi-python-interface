@@ -58,10 +58,10 @@ class Poly5Reader:
         mne.io.RawArray
         """
 
-        streams = self.channels
+        
         fs = self.sample_rate
-        labels = [s._Channel__name for s in streams]
-        units = [s._Channel__unit_name for s in streams]
+        labels = self.ch_names
+        units = self.ch_unit_names
 
         type_options = [
             "ecg",
@@ -81,18 +81,21 @@ class Poly5Reader:
             "hbo",
         ]
         types_clean = []
-        for t in labels:
+        for idx, t in enumerate(labels):
             for t_option in type_options:
                 if t_option in t.lower():
                     types_clean.append(t_option)
                     break
             else:
-                types_clean.append("misc")
+                if 'V' in units[idx]:
+                    types_clean.append("eeg")
+                else:
+                    types_clean.append("misc")
 
         info = mne.create_info(ch_names=labels, sfreq=fs, ch_types=types_clean)
 
         # convert from microvolts to volts if necessary
-        scale = np.array([1e-6 if u == "µVolt" else 1 for u in units])
+        scale = np.array([1e-6 if (u == "µVolt" or u == "uVolt") else 1 for u in units])
 
         raw = mne.io.RawArray(self.samples * np.expand_dims(scale, axis=1), info)
         return raw
@@ -138,10 +141,11 @@ class Poly5Reader:
                        
                     samples=np.transpose(np.reshape(sample_buffer, [self.num_samples, self.num_channels]))
                     
-                    self.ch_names = [s._Channel__name for s in self.channels]
+                    ch_names = [s._Channel__name for s in self.channels]
                     self.ch_unit_names = [s._Channel__unit_name for s in self.channels]
                     
-                    self.samples=samples
+                    self.samples, self.ch_names = self._reorder_grid(samples, ch_names)
+
                     print('Done reading data.')
                     self.file_obj.close()
                     
@@ -211,6 +215,30 @@ class Poly5Reader:
         DataBlock = struct.unpack(myfmt, sampleData)
         SignalBlock = np.asarray(DataBlock)
         return SignalBlock
+    
+    def _reorder_grid(self, samples, ch_names):
+        # Reordering textile grid channels
+        channel_conversion_list = np.arange(0,len(ch_names), dtype = int)
+        
+        # Detect row and column number based on channel name 
+        RCch = []
+        for i, ch in enumerate(ch_names):
+            if ch.find('R') == 0 and ch.find('C') == 2:
+                R,C = ch[1:].split('C')
+                RCch.append((R,str(C).zfill(2),i))
+            elif ch == 'CREF':
+                RCch.append(('0', '0', i))
+        
+        # Sort data based on row and column
+        RCch.sort()
+        for ch in range(len(RCch)):
+            channel_conversion_list[ch] = RCch[ch][2]
+            
+        # Change the ordering of channels on the textile grid
+        samples = samples[channel_conversion_list,:]
+        ch_names = [ch_names[i] for i in channel_conversion_list]
+        
+        return samples, ch_names
     
     def close(self):
         self.file_obj.close()

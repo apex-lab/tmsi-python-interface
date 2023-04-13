@@ -42,3 +42,4 @@ class PlotterFormat(Enum):
     signal_viewer = 1
     impedance_viewer = 2
     heatmap = 3
+    envelope = 4

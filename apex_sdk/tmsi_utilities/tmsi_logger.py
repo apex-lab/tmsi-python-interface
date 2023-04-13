@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ limitations under the License.
 
 import os
 from sys import platform
+from datetime import datetime
 import logging
 from .logger_filter import PERFORMANCE_LOG, LoggerFilter, ACTIVITY_LOG
 from .singleton import Singleton
@@ -43,41 +44,85 @@ formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
 
 
 class TMSiLogger(metaclass = Singleton):
+    """Class to handle the logs of TMSi."""
     def __init__(self):
+        """Initialize the logger."""
         self.__tmsi_log = logging.getLogger("TMSi")
         debug_stream_handler = logging.StreamHandler()
         debug_stream_handler.setFormatter(formatter)
         self.__tmsi_log.handlers = [debug_stream_handler]
     
     def critical(self, message):
+        """Write a log with level critical.
+
+        :param message: message to log.
+        :type message: str
+        """
         self.__tmsi_log.log(level = logging.CRITICAL, msg = message)
     
     def debug(self, message):
+        """Write a log with level debug.
+
+        :param message: message to log.
+        :type message: str
+        """
         self.__tmsi_log.log(level = logging.DEBUG, msg = message)
 
     def info(self, message):
+        """Write a log with level info.
+
+        :param message: message to log.
+        :type message: str
+        """
         self.__tmsi_log.log(level = logging.INFO, msg = message)
     
     def warning(self, message):
+        """Write a log with level warning.
+
+        :param message: message to log.
+        :type message: str
+        """
         self.__tmsi_log.log(level = logging.WARNING, msg = message)
 
 class TMSiLoggerActivity(metaclass = Singleton):
+    """Class to handle the activity logs."""
     def __init__(self):
+        """Initialize the activity logger."""
+        self.activity_log_enabled = False
+        if "TMSi_ACTIVITY" not in os.environ:
+            return
+        if os.environ["TMSi_ACTIVITY"] != "ON":
+            return
+        self.activity_log_enabled = True
         self.__tmsi_perf = logging.getLogger("TMSiActivity")
-        perf_handler = logging.FileHandler("__activity.log")
+        if platform == "win32":
+            tmsifolder = os.path.join(get_documents_path(), "TMSi","Apex")
+            if not os.path.exists(tmsifolder):
+                os.makedirs(tmsifolder)
+            perf_handler = logging.FileHandler(os.path.join(tmsifolder, "__activity{}.log".format(datetime.now().strftime("%Y%m%d_%H%M%S"))))
+        else:
+            perf_handler = logging.FileHandler("__activity{}.log".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         perf_handler.setFormatter(formatter)
         perf_handler.setLevel(ACTIVITY_LOG)
         perf_handler.addFilter(LoggerFilter(ACTIVITY_LOG))
         self.__tmsi_perf.handlers = [perf_handler]
 
     def log(self, message):
-        self.__tmsi_perf.log(level = ACTIVITY_LOG, msg = message)
+        """Log the message with activity level.
+
+        :param message: message to log.
+        :type message: str
+        """
+        if self.activity_log_enabled:
+            self.__tmsi_perf.log(level = ACTIVITY_LOG, msg = message)
 
 class TMSiLoggerPerformance(metaclass = Singleton):
+    """Class to handle the performance logs."""
     def __init__(self):
+        """Initialize the performance logger."""
         self.__tmsi_perf = logging.getLogger("TMSiPerformance")
         if platform == "win32":
-            tmsifolder = os.path.join(get_documents_path(), "TMS_International_B.V","Apex")
+            tmsifolder = os.path.join(get_documents_path(), "TMSi","Apex")
             if not os.path.exists(tmsifolder):
                 os.makedirs(tmsifolder)
             perf_handler = logging.FileHandler(os.path.join(tmsifolder, "__performance.log"))
@@ -89,5 +134,10 @@ class TMSiLoggerPerformance(metaclass = Singleton):
         self.__tmsi_perf.handlers = [perf_handler]
 
     def log(self, message):
+        """Log the message with performance level.
+
+        :param message: message to log.
+        :type message: str
+        """
         self.__tmsi_perf.log(level = PERFORMANCE_LOG, msg = message)
 

@@ -59,7 +59,9 @@ try:
         dev.open()
     
         # Change the device configuration:
-        # Set sampling frequency to 1024 Hz
+        # Change Sampling frequency to either 1000 Hz or 1024 Hz: 
+        #   * Use 'Binary' for 1024 Hz
+        #   * Use 'Decimal' for 1000 Hz
         # Disable live impedance measurement
         # Set impedance warning level (kOhms)
         dev.set_device_sampling_config(sampling_frequency = ApexEnums.TMSiBaseSampleRate.Binary,

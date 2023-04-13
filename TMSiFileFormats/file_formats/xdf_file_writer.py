@@ -205,9 +205,7 @@ class XdfWriter:
             self._fp.write(str.encode("XDF:"))
             self._write_file_header_chunk()
 
-            # 3. Write the file-header chunk
-            # self.device.config
-          
+            # 3. Write the file-header chunk        
             channels = self.device.get_device_active_channels()
             self._write_stream_header_chunk(channels, self._sample_rate, imp_df)
                 
@@ -582,6 +580,13 @@ class XdfWriter:
         chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
         chLocs.columns=['default_name', 'eeg_name', 'X', 'Y', 'Z']
 
+        #Reference meta-data
+        de_reference = ET.SubElement(de_desc, 'reference')
+        item_subtracted =  ET.SubElement(de_reference, 'subtracted')
+        item_subtracted.text = 'Yes'
+        item_common_average =  ET.SubElement(de_reference, 'common_average')
+        item_common_average.text = 'Yes'
+
         # Meta-data per channel
         for j in range(len(channels)):
             # description of one channel, repeated (one for each channel in the time series)
@@ -604,6 +609,12 @@ class XdfWriter:
                     item_y.text=str(95*chLocs['Y'].values[j])
                     item_z.text=str(95*chLocs['Z'].values[j])
             
+                #Reference meta-data
+                if channels[j]._is_reference:
+                    item_label =  ET.SubElement(de_reference, 'label')
+                    item_label.text = channels[j].get_channel_name()
+                else:
+                    item_common_average.text = 'No'
             elif (channels[j].get_channel_type().value == ChannelType.BIP.value):
                 item_type.text = 'BIP'
             elif (channels[j].get_channel_type().value == ChannelType.AUX.value):
@@ -617,18 +628,11 @@ class XdfWriter:
             else:
                 item_type.text = '-'
                 
-            # if imp_df is not None:
-            #     #channel impedance
-            #     item_impedance = ET.SubElement(item_channel, 'impedance')
-            #     if (channels[i].type.value == ChannelType.UNI.value):
-            #         item_impedance.text=str(imp_df['impedance'].values[j]) 
-            #     else:
-            #         item_impedance.text='N.A.'
             # measurement unit (strongly preferred unit: microvolts)
             item_unit = ET.SubElement(item_channel, 'unit')
             item_unit.text = channels[j].get_channel_unit_name()
-            
-                
+
+
         #Acquisition meta-data
         de_acquisition = ET.SubElement(de_desc, 'acquisition')
         item_manufacturer =  ET.SubElement(de_acquisition, 'manufacturer')
@@ -637,15 +641,6 @@ class XdfWriter:
         item_model.text = self.device.get_device_type()
         item_precision =  ET.SubElement(de_acquisition, 'precision')
         item_precision.text = '32'
-        
-        #Reference meta-data
-        de_reference = ET.SubElement(de_desc, 'reference')
-        item_label =  ET.SubElement(de_reference, 'label')
-        item_subtracted =  ET.SubElement(de_reference, 'subtracted')
-        item_subtracted.text = 'Yes'
-        item_common_average =  ET.SubElement(de_reference, 'common_average')
-        item_label.text = 'average'
-        item_common_average.text = 'Yes'
         
         # Write the StreamHeader-cunk
         XdfWriter._write_chunk(self._fp, 4, ChunkTag.stream_header, xml_etree_to_string(de_info))

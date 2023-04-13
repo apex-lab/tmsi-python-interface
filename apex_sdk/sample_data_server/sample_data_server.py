@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ from copy import copy
 from ..sample_data_server.sample_data import SampleDataConsumer, SampleData
 from ..sample_data_server.event_data import EventDataConsumer, EventData
 from ..tmsi_utilities.singleton import Singleton
+from ..tmsi_utilities.tmsi_logger import TMSiLoggerActivity
 
 
 class SampleDataServer(metaclass = Singleton):
@@ -43,7 +44,7 @@ class SampleDataServer(metaclass = Singleton):
         self.__consumer_list = []
         self.__event_consumer_list = []
     
-    def get_consumer_list(self) -> list[SampleDataConsumer]:
+    def get_consumer_list(self) -> list:
         """Gets the list of available consumer.
 
         :return: list of available consumers.
@@ -51,7 +52,7 @@ class SampleDataServer(metaclass = Singleton):
         """
         return self.__consumer_list
 
-    def get_event_consumer_list(self) -> list[EventDataConsumer]:
+    def get_event_consumer_list(self) -> list:
         """Gets the list of available event consumer.
 
         :return: list of available event consumers.
@@ -83,7 +84,12 @@ class SampleDataServer(metaclass = Singleton):
         num_consumers = len(self.__consumer_list)
         for i in range(num_consumers):
             if (self.__consumer_list[i].id == id):
-                self.__consumer_list[i].q.put(data)
+                if not hasattr(self.__consumer_list[i].q, "get_consumer_id"):
+                    self.__consumer_list[i].q.put(data)
+                else:
+                    TMSiLoggerActivity().log("SDS->>Consumer{}: PUT sample data".format(
+                        self.__consumer_list[i].q.get_consumer_id()))
+                    self.__consumer_list[i].q.put(data)
 
     def register_consumer(self, id: int, q: Queue):
         """Creates the new consumer and registers it to the list of consumers.

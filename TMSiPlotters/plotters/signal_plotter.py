@@ -50,6 +50,7 @@ from TMSiSDK import sample_data_server
 from TMSiSDK.device import DeviceInterfaceType, ChannelType
 
 from apex_sdk.device.tmsi_device import TMSiDevice
+
 from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
 
 

@@ -178,7 +178,11 @@ class SagaConfig(DeviceConfig):
             Interface types that can be configured on SAGA are docked, 
             optical and wifi.
         """
-        
+        if dr_interface_type.value == DeviceInterfaceType.usb.value \
+            or dr_interface_type.value == DeviceInterfaceType.network.value:
+            print("illegal interface change")
+            return
+
         if dr_interface_type.value != self._configured_interface:
             print('DR-DS interface is changed to: ')
             print(dr_interface_type)

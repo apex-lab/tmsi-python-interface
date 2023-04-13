@@ -71,6 +71,11 @@ class Xdf_Reader:
               
                   labels, types, units, impedances = self._get_ch_info(stream)
                   
+                  # convert from microvolts to volts if necessary
+                  scale = np.array([1e-6 if (u == "µVolt" or u == "uVolt") else 1 for u in units])
+                  samples = (stream["time_series"] * scale).T
+                  samples, labels = self._reorder_grid(samples, labels)
+                  
                   type_options=["ecg", "bio", "stim", "eog", "misc", "seeg", "dbs", "ecog", "mag", "eeg", "ref_meg", "grad", "emg", "hbr", "hbo"]
                   for ind, t in enumerate(types):
                       if t=="EEG":
@@ -82,9 +87,7 @@ class Xdf_Reader:
                   if self.add_ch_locs:
                       info=self._add_ch_locations(info)
                  
-                  # convert from microvolts to volts if necessary
-                  scale = np.array([1e-6 if u == "µVolt" else 1 for u in units])
-                  raw = mne.io.RawArray((stream["time_series"] * scale).T, info)
+                  raw = mne.io.RawArray(samples, info)
                   raw.impedances=impedances
                   
                   
@@ -171,3 +174,27 @@ class Xdf_Reader:
             return self.stream_info
         else:
             return None
+        
+    def _reorder_grid(self, samples, ch_names):
+        # Reordering textile grid channels
+        channel_conversion_list = np.arange(0,len(ch_names), dtype = int)
+        
+        # Detect row and column number based on channel name 
+        RCch = []
+        for i, ch in enumerate(ch_names):
+            if ch.find('R') == 0 and ch.find('C') == 2:
+                R,C = ch[1:].split('C')
+                RCch.append((R,str(C).zfill(2),i))
+            elif ch == 'CREF':
+                RCch.append(('0', '0', i))
+        
+        # Sort data based on row and column
+        RCch.sort()
+        for ch in range(len(RCch)):
+            channel_conversion_list[ch] = RCch[ch][2]
+            
+        # Change the ordering of channels on the textile grid
+        samples = samples[channel_conversion_list,:]
+        ch_names = [ch_names[i] for i in channel_conversion_list]
+        
+        return samples, ch_names

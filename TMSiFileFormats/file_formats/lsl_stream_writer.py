@@ -149,8 +149,56 @@ class LSLWriter:
             raise TMSiError(TMSiErrorCode.file_writer_error)
 
     def __open_TMSiDevice(self):
-        print('For APEX, the LSL_stream_writer is not available for this version of the TMSi Python Interface (v4.0.0.0)\n\n')
-        raise TMSiError(TMSiErrorCode.api_invalid_command)
+        try:
+            self._date = datetime.now()
+            self._sample_rate = self.device.get_device_sampling_frequency()
+            self._num_channels = self.device.get_num_channels()
+        
+            # Calculate nr of sample-sets within one sample-data-block:
+            # This is the nr of sample-sets in 150 milli-seconds or when the
+            # sample-data-block-size exceeds 64kb the it will become the nr of
+            # sample-sets that fit in 64kb
+            self._num_sample_sets_per_sample_data_block = int(self._sample_rate * 0.15)
+            size_one_sample_set = self._num_channels * 4
+            if ((self._num_sample_sets_per_sample_data_block * size_one_sample_set) > 64000):
+                self._num_sample_sets_per_sample_data_block = int(64000 / size_one_sample_set)
+        
+            # provide LSL with metadata
+            info = StreamInfo(
+                self._name,
+                'EEG',
+                self._num_channels,
+                self._sample_rate,
+                'float32',
+                'tmsi-' + str(self.device.get_device_serial_number()), 
+                ) 
+            chns = info.desc().append_child("channels")
+            for idx, ch in enumerate(self.device.get_device_active_channels()): # active channels
+                 chn = chns.append_child("channel")
+                 chn.append_child_value("label", ch.get_channel_name())
+                 chn.append_child_value("index", str(idx))
+                 chn.append_child_value("unit", ch.get_channel_unit_name())
+                 if (ch.get_channel_type().value == ChannelType.UNI.value) and not ch.get_channel_name()=='CREF':
+                     chn.append_child_value("type", 'EEG')
+                 elif (ch.get_channel_type().value == ChannelType.status.value):
+                     chn.append_child_value("type", 'STATUS')
+                 elif (ch.get_channel_type().value == ChannelType.counter.value):
+                     chn.append_child_value("type", 'COUNTER')
+                 else:
+                     chn.append_child_value("type", '-')
+            info.desc().append_child_value("manufacturer", "TMSi")
+            sync = info.desc().append_child("synchronization")
+            sync.append_child_value("offset_mean", str(0.0335)) 
+        
+            # start sampling data and pushing to LSL
+            self._outlet = StreamOutlet(info, self._num_sample_sets_per_sample_data_block)
+            self._consumer = LSLConsumer(self._outlet)
+            ApexSampleDataServer().register_consumer(self.device.get_id(), self._consumer)
+            
+        except:
+            raise TMSiError(TMSiErrorCode.file_writer_error)
+
+
 
 
     def close(self):

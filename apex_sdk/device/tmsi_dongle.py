@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,12 +31,30 @@ limitations under the License.
 '''
 
 class TMSiDongle:
+    """A class to handle all the TMSi dongles."""
     def __init__(self, dongle_id, serial_number):
+        """Initialize the dongle.
+
+        :param dongle_id: id
+        :type dongle_id: int
+        :param serial_number: serial number.
+        :type serial_number: int
+        """
         self.__dongle_id = dongle_id
         self.__serial_number = serial_number
 
     def get_id(self):
+        """Get id of the dongle.
+
+        :return: id of the dongle.
+        :rtype: int
+        """
         return self.__dongle_id
 
     def get_serial_number(self):
+        """Get serial number of the dongle.
+
+        :return: serial number of the dongle.
+        :rtype: int
+        """
         return self.__serial_number

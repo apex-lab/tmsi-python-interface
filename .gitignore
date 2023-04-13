@@ -1,4 +1,10 @@
 # ignore pycache-folders
 __pycache__/
-.venv*
-.vscode
+.*/
+dist/
+build/
+Output/
+measurements/
+__*.*
+*.rst
+!index.txt

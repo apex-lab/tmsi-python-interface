@@ -74,7 +74,7 @@ try:
         # Initialise the lsl-stream
         stream = FileWriter(FileFormat.lsl, "SAGA")
         
-        # Define the handle to the device
+        # Pass the device information to the LSL stream.
         stream.open(dev)
     
         # Define the GUI object and show it 
