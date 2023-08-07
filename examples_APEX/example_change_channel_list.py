@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,26 +31,25 @@ limitations under the License.
 
 '''
 
+from PySide2.QtWidgets import *
 import sys
 from os.path import join, dirname, realpath
 Example_dir = dirname(realpath(__file__)) # directory of this file
 modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
-configs_dir = join(Example_dir, '../TMSiSDK\\configs') # directory with configurations
+configs_dir = join(Example_dir, '../TMSiSDK\\tmsi_resources') # directory with configurations
 sys.path.append(modules_dir)
 
-from apex_sdk.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
-from apex_sdk.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 
-from PySide2 import QtWidgets
-from TMSiPlotters.gui import PlottingGUI
-from TMSiPlotters.plotters import PlotterFormat
-
+from TMSiGui.gui import Gui
+from TMSiPlotterHelpers.signal_plotter_helper import SignalPlotterHelper
 
 try:
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
     TMSiSDK().discover(DeviceType.apex, DeviceInterfaceType.usb)
-    discoveryList = TMSiSDK().get_device_list()
+    discoveryList = TMSiSDK().get_device_list(DeviceType.apex)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -66,27 +65,13 @@ try:
         # Set two custom channel names, on the specific channel indices
         dev.set_device_channel_names(names = ['Fpz', 'F8'], indices = [1, 7])
         
-        # Check if there is already a plotter application in existence
-        plotter_app = QtWidgets.QApplication.instance()
-        
-        # Initialise the plotter application if there is no other plotter application
-        if not plotter_app:
-            plotter_app = QtWidgets.QApplication(sys.argv)
-    
+        # Initialise the plotter application
+        app = QApplication(sys.argv)
+        plotter_helper = SignalPlotterHelper(device=dev)
         # Define the GUI object and show it 
-        # The channel selection argument states which channels need to be displayed initially by the GUI
-        plot_window = PlottingGUI(plotter_format = PlotterFormat.signal_viewer,
-                                  figurename = 'A RealTimePlot', 
-                                  device = dev, 
-                                  channel_selection = [0,1,2])
-        plot_window.show()
-        
-        # Enter the event loop
-        plotter_app.exec_()
-        
-        # Quit and delete the Plotter application
-        QtWidgets.QApplication.quit()
-        del plotter_app
+        gui = Gui(plotter_helper = plotter_helper)
+         # Enter the event loop
+        app.exec_()        
         
         # Close the connection to the device
         dev.close()
@@ -95,6 +80,7 @@ except TMSiError as e:
     print(e)
         
 finally:
-    # Close the connection to the device when the device is opened
-    if dev.get_device_state() == DeviceState.connected:
-        dev.close()
+    if 'dev' in locals():
+        # Close the connection to the device when the device is opened
+        if dev.get_device_state() == DeviceState.connected:
+            dev.close()

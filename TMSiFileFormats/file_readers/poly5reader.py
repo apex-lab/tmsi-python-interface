@@ -242,7 +242,75 @@ class Poly5Reader:
     
     def close(self):
         self.file_obj.close()
+
+    def read_live_impedance(self):
+        """
+        This function reads the live measured impedances that are stored in the 
+        datafile. If no live impedances are stored in the file, the function will return before proceeding
         
+        :return live_imp: real part of the impedances for all channels
+        :rtype: array
+        :return live_cap: imaginary part of the impedances for all channels
+        :rtype: array
+    """
+        # Parameters from class
+        samples = self.samples
+        ch_names = self.ch_names
+        # Parameter to define if there are live impedances stored in file
+        live_imp_in_file = False
+
+        # Define the number of channels in the data
+        num_channels = len(ch_names)
+
+        # Find the channels in which the information is stored
+        for i in range(len(ch_names)):
+            # Find channel with ID information
+            if ch_names[i] == 'CYCL_IDX':
+                cycl_idx_num = i
+                live_imp_in_file = True
+            # In channel CYCL_ST1 the real part of the impedance value is stored
+            elif ch_names[i] == 'CYCL_ST1':
+                cycl_imp_num = i
+                live_imp_in_file = True
+            # In channel CYCL_ST2 the imaginary part of the impedance is stored
+            elif ch_names[i] == 'CYCL_ST2':
+                cycl_cap_num = i
+                live_imp_in_file = True
+        
+        # Do not proceed with the rest of the code if there are no impedance values stored in the file
+        if not live_imp_in_file:
+            print('No live impedances were stored in this file')
+            live_imp = []
+            live_cap = []
+            return live_imp, live_cap
+                
+        # Cycle_idx channel defines the channel index of which the impedance information is stored in channels CYCL_ST1 and CYCL_ST2
+        # To find the amount of channels stored in the data, find the maximum value of the cycl_idx channel
+        maximum_cycl_idx = np.max(samples[cycl_idx_num,:])
+        
+        # Last index of the channel information is maximum_cylc_idx. So, channel indices range from 0 to this number. Therefore, length of stored info is one more (0 should be included)
+        length_stored_idx = int(maximum_cycl_idx+1)
+        
+        # cycl_idx channel stores the id of the channel of which the impedance is measured at that index
+        cycl_idx = samples[cycl_idx_num,:]
+        # cycl_imp stores the real part of the impedance value (resistance)
+        cycl_imp = samples[cycl_imp_num,:]
+        # cycl_cap stores the imaginary part of the impedance value (capacity)
+        cycl_cap = samples[cycl_cap_num,:]
+        
+        # Define the variables that store the live impedance and live cap per channel. By default, set the values to 1000
+        live_imp = np.ones((num_channels, len(samples[cycl_imp_num,:]))) * 1000
+        live_cap = np.ones((num_channels, len(samples[cycl_cap_num,:]))) * 1000
+        
+        
+        # Loop through the channels and store the values
+        for i in range(len(cycl_idx)):
+            # Values are measured once in every length_stored_idx channels, they are not updated for every sample
+            live_imp[int(cycl_idx[i]),i:i+length_stored_idx] = cycl_imp[i]
+            live_cap[int(cycl_idx[i]),i:i+length_stored_idx] = cycl_cap[i]
+
+        return live_imp[:,:], live_cap[:,:]
+
 
 class Channel:
     """ 'Channel' represents a device channel. It has the next properties:

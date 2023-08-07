@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,23 +37,18 @@ modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
 
-from PySide2 import QtWidgets
-import numpy as np
+from PySide2.QtWidgets import *
 
-from TMSiSDK import tmsi_device
-from TMSiPlotters.gui import PlottingGUI
-from TMSiPlotters.plotters import PlotterFormat
-from TMSiSDK.device import DeviceInterfaceType, ChannelType, DeviceState
-from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 
+from TMSiGui.gui import Gui
+from TMSiPlotterHelpers.impedance_plotter_helper import ImpedancePlotterHelper
 
 try:
-    # Initialise the TMSi-SDK first before starting using it
-    tmsi_device.initialize()
-    
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
-                                         DeviceInterfaceType.usb)
+    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -61,52 +56,27 @@ try:
         
         # Open a connection to the SAGA-system
         dev.open()
-    
-        # Enable UNI 01 to UNI 32
-        ch_list = dev.config.channels
-        UNI_count = 0
-        UNI_list = np.arange(1,33, dtype = int)
-        for idx, ch in enumerate(ch_list):
-            if (ch.type == ChannelType.UNI):
-                if UNI_count in UNI_list:
-                    ch.enabled = True
-                else:
-                    ch.enabled = False
-                UNI_count += 1
-            else :
-                ch.enabled = False
-        dev.config.channels = ch_list
         
-        # Check if there is already a plotter application in existence
-        plotter_app = QtWidgets.QApplication.instance()
-        
-        # Initialise the plotter application if there is no other plotter application
-        if not plotter_app:
-            plotter_app = QtWidgets.QApplication(sys.argv)
-    
-        # Define the GUI object and show it (either a grid layout or head layout may be chosen)
-        window = PlottingGUI(plotter_format = PlotterFormat.impedance_viewer,
-                             figurename = 'An Impedance Plot', 
-                             device = dev, 
-                             layout = 'grid')
-        window.show()
-        
-        # Enter the event loop
-        plotter_app.exec_()
-        
-        # Delete the Impedace plotter application
-        del plotter_app
+        # Initialise the plotter application
+        app = QApplication(sys.argv)
+        # Initialise the helper
+        plotter_helper = ImpedancePlotterHelper(device=dev,
+                                                 layout='head', 
+                                                 file_storage = join(measurements_dir,"example_impedance_plot"))
+        # Define the GUI object and show it 
+        gui = Gui(plotter_helper = plotter_helper)
+         # Enter the event loop
+        app.exec_()
         
         # Close the connection to the SAGA device
         dev.close()
     
 except TMSiError as e:
-    print("!!! TMSiError !!! : ", e.code)
-    if (e.code == TMSiErrorCode.device_error) :
-        print("  => device error : 0x", hex(dev.status.error))
-        DeviceErrorLookupTable(hex(dev.status.error))
+    print(e)
+    
         
 finally:
-    # Close the connection to the device when the device is opened
-    if dev.status.state == DeviceState.connected:
-        dev.close()
+    if 'dev' in locals():
+        # Close the connection to the device when the device is opened
+        if dev.get_device_state() == DeviceState.connected:
+            dev.close()

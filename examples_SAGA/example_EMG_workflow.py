@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022, 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,8 @@ limitations under the License.
  * @file ${example_EMG_workflow.py} 
  * @brief This example shows the functionality of the impedance plotter and an
  * HD-EMG heatmap. The user can disable channels based on measured impedances.
- * The tail orientation of the grid can be given, so that the grid is adapted 
- * to 'look into the grid'. The heatmap displays the RMS value per channel, 
- * combined with linear interpolation to fill the space between channels.
+ * The heatmap displays the RMS value per channel, combined with linear 
+ * interpolation to fill the space between channels.
  *
  */
 
@@ -39,27 +38,25 @@ from os.path import join, dirname, realpath
 Example_dir = dirname(realpath(__file__)) # directory of this file
 modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
+configs_dir = join(Example_dir, '../TMSiSDK\\tmsi_resources') # directory with configurations
 sys.path.append(modules_dir)
 import time
 
-from PySide2 import QtWidgets
+from PySide2.QtWidgets import *
 
-from TMSiSDK import tmsi_device
-from TMSiPlotters.gui import PlottingGUI
-from TMSiPlotters.plotters import PlotterFormat
-from TMSiSDK.device import DeviceInterfaceType, DeviceState
 from TMSiFileFormats.file_writer import FileWriter, FileFormat
-from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-from TMSiSDK import get_config
 
+from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+
+from TMSiGui.gui import Gui
+from TMSiPlotterHelpers.impedance_plotter_helper import ImpedancePlotterHelper
+from TMSiPlotterHelpers.heatmap_plotter_helper import HeatmapPlotterHelper
 
 try:
-    # Initialise the TMSi-SDK first before starting using it
-    tmsi_device.initialize()
-    
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
-                                         DeviceInterfaceType.usb)
+    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -73,30 +70,21 @@ try:
         
         # Load the HD-EMG channel set and configuration
         print("load HD-EMG config")
-        if dev.config.num_channels<64:
-            cfg = get_config("saga32_config_textile_grid_" + grid_type)
+        if dev.get_num_channels()<64:
+            dev.import_configuration(join(configs_dir, "saga32_config_textile_grid_" + grid_type + ".xml"))
         else:
-            cfg = get_config("saga64_config_textile_grid_" + grid_type)
-        dev.load_config(cfg)
+            dev.import_configuration(join(configs_dir, "saga64_config_textile_grid_" + grid_type + ".xml"))
         
-        # Check if there is already a plotter application in existence
-        plotter_app = QtWidgets.QApplication.instance()
-        
-        # Initialise the plotter application if there is no other plotter application
-        if not plotter_app:
-            plotter_app = QtWidgets.QApplication(sys.argv)
-            
-        # Define the GUI object and show it
-        window = PlottingGUI(plotter_format = PlotterFormat.impedance_viewer,
-                              figurename = 'An Impedance Plot', 
-                              device = dev, 
-                              layout = 'grid', 
-                              file_storage = join(measurements_dir,"example_EMG_workflow"),
-                              grid_type = grid_type)
-        window.show()
-        
-        # Enter the event loop
-        plotter_app.exec_()
+        # Initialise the plotter application
+        app = QApplication(sys.argv)
+        # Initialise the helper
+        plotter_helper = ImpedancePlotterHelper(device=dev,
+                                                 layout=grid_type, 
+                                                 file_storage = join(measurements_dir,"example_EMG_workflow"))
+        # Define the GUI object and show it 
+        gui = Gui(plotter_helper = plotter_helper)
+         # Enter the event loop
+        app.exec_()
         
         # Pause for a while to properly close the GUI after completion
         print('\n Wait for a bit while we close the plot... \n')
@@ -117,23 +105,14 @@ try:
         # Define the handle to the device
         file_writer.open(dev)
     
+        # Initialise the new plotter helper and filter
+        # In case you want to use the signal plotter, use the grid_type argument to order the channels
+        # following the order of the channels in the grid, see example_filter_and_plot
+        plotter_helper = HeatmapPlotterHelper(device=dev, layout=grid_type, hpf=5, order=1)
         # Define the GUI object and show it 
-        # The tail orientation is needed so that the user looks 'into' the grid. 
-        # The signal_lim parameter (in microVolts) is needed to configure the colorbar range
-        plot_window = PlottingGUI(plotter_format = PlotterFormat.heatmap,
-                                    figurename = 'An HD-EMG Heatmap', 
-                                    device = dev,
-                                    tail_orientation = 'down', 
-                                    signal_lim = 150,
-                                    grid_type = grid_type)
-        plot_window.show()
-        
-        # Enter the event loop
-        plotter_app.exec_()
-
-        # Quit and delete the Plotter application
-        QtWidgets.QApplication.quit()
-        del plotter_app
+        gui = Gui(plotter_helper = plotter_helper)
+         # Enter the event loop
+        app.exec_()
         
         # Close the file writer after GUI termination
         file_writer.close()
@@ -142,12 +121,11 @@ try:
         dev.close()
     
 except TMSiError as e:
-    print("!!! TMSiError !!! : ", e.code)
-    if (e.code == TMSiErrorCode.device_error) :
-        print("  => device error : ", hex(dev.status.error))
-        DeviceErrorLookupTable(hex(dev.status.error))
+    print(e)
+    
         
 finally:
-    # Close the connection to the device when the device is opened
-    if dev.status.state == DeviceState.connected:
-        dev.close()
+    if 'dev' in locals():
+        # Close the connection to the device when the device is opened
+        if dev.get_device_state() == DeviceState.connected:
+            dev.close()
