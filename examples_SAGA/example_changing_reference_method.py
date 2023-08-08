@@ -1,5 +1,5 @@
 '''
-(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,10 +24,10 @@ limitations under the License.
 /**
  * @file ${example_changing_reference_method.py} 
  * @brief This example shows how to change the applied reference method. The
- * configurable options are RefMethod.common and RefMethod.average.
+ * configurable options are ReferenceMethod.common and ReferenceMethod.average.
  * In case of common reference, the reference switch method can be set to 
- * AutoRefMethod.Fixed or AutoRefMethod.Average. In case of 
- * AutoRefMethod.Average, reference method automatically swithces to average 
+ * ReferenceSwitch.fixed or ReferenceSwitch.auto.In case of 
+ * ReferenceSwitch.auto, reference method automatically swithces to average 
  * reference when the common reference signal is out of range
  *
  */
@@ -43,17 +43,18 @@ measurements_dir = join(Example_dir, '../measurements') # directory with all mea
 sys.path.append(modules_dir)
 import time
 
+from TMSiSDK import tmsi_device
+from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.device import DeviceInterfaceType, ChannelType, ReferenceMethod, ReferenceSwitch, DeviceState
 from TMSiFileFormats.file_writer import FileWriter, FileFormat
-from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
-from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-from TMSiSDK.device import ChannelType
-from TMSiSDK.device.devices.saga.saga_API_enums import SagaBaseSampleRate, RefMethod, AutoRefMethod
-from TMSiSDK.device.tmsi_device_enums import MeasurementType
 
 try:
+    # Initialize the TMSi-SDK first before starting using it
+    tmsi_device.initialize()
+
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
-    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
+    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
+                                         DeviceInterfaceType.usb)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -63,24 +64,28 @@ try:
         dev.open()
     
         # Set the sample rate of all channels to 1000 Hz
-        dev.set_device_sampling_config(base_sample_rate = SagaBaseSampleRate.Decimal,  channel_type = ChannelType.all_types, channel_divider = 4)
+        dev.config.base_sample_rate = 4000
+        dev.config.set_sample_rate(ChannelType.all_types, 4)
         
         # Specify the reference method and reference switch method that are used during sampling 
-        # RefMethod: Average or Common
-        # AutoRefMethod: Fixed or Average
-        dev.set_device_references(reference_method = RefMethod.Common, auto_reference_method = AutoRefMethod.Fixed)
+        # ReferenceMethod: average or common
+        # ReferenceSwitch: fixed or auto
+        dev.config.reference_method = ReferenceMethod.common,ReferenceSwitch.fixed
         
-        # Check whether device is a SAGA 64+ or SAGA 32+ system
+        # Retrieve the channel list from the device
+        ch_list = dev.config.channels
+        
         # Enable all UNI-channels
-        nCh = dev.get_num_channels()
-        if nCh > 64:
-            dev.set_device_active_channels(range(1,65), True)
-        else:
-            dev.set_device_active_channels(range(1,33), True)
-        
-        # When the device samples in average reference method, the CREF channel can be disabled
-        if dev.get_device_references()['reference'] == RefMethod.Average:
-            dev.set_device_active_channels([0], False)   
+        for idx, ch in enumerate(ch_list):
+            if (ch.type == ChannelType.UNI):
+                # When the device samples in average reference method, the CREF channel can be disabled
+                if (idx == 0) and (dev.config.reference_method == ReferenceMethod.average.value):
+                    ch.enabled = False
+                else:
+                    ch.enabled = True
+            else:
+                ch.enabled = False
+        dev.config.channels = ch_list
     
         # Before the measurement starts first a file-writer-object must be created and opened.
         # Upon creation specify :
@@ -94,7 +99,7 @@ try:
     
         # Start the measurement and wait 10 seconds. In the mean time the file-writer-instance
         # will capture the sampling data and store it into the specified file in the 'poly5'-data format.
-        dev.start_measurement(MeasurementType.SAGA_SIGNAL)
+        dev.start_measurement()
     
         # Wait for 10 seconds
         time.sleep(10)
@@ -110,11 +115,12 @@ try:
         dev.close()
 
 except TMSiError as e:
-    print(e)
-    
+    print("!!! TMSiError !!! : ", e.code)
+    if (e.code == TMSiErrorCode.device_error) :
+        print("  => device error : ", hex(dev.status.error))
+        DeviceErrorLookupTable(hex(dev.status.error))
         
 finally:
-    if 'dev' in locals():
-        # Close the connection to the device when the device is opened
-        if dev.get_device_state() == DeviceState.connected:
-            dev.close()
+    # Close the connection to the device when the device is opened
+    if dev.status.state == DeviceState.connected:
+        dev.close()

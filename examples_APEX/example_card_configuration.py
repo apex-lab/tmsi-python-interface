@@ -40,16 +40,16 @@ measurements_dir = join(Example_dir, '../measurements') # directory with all mea
 sys.path.append(modules_dir)
 
 
-from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceInterfaceType, DeviceType, DeviceState
-from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-from TMSiSDK.device import ApexStructureGenerator, ApexEnums
+from apex_sdk.tmsi_sdk import TMSiSDK, DeviceInterfaceType, DeviceType, DeviceState
+from apex_sdk.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from apex_sdk.device import ApexStructureGenerator, ApexEnums
 
 
 
 try:
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
     TMSiSDK().discover(DeviceType.apex, DeviceInterfaceType.usb)
-    discoveryList = TMSiSDK().get_device_list(DeviceType.apex)
+    discoveryList = TMSiSDK().get_device_list()
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -79,7 +79,6 @@ except TMSiError as e:
     print(e)
         
 finally:
-    if 'dev' in locals():
-        # Close the connection to the device when the device is opened
-        if dev.get_device_state() == DeviceState.connected:
-            dev.close()
+    # Close the connection to the device when the device is opened
+    if dev.get_device_state() == DeviceState.connected:
+        dev.close()

@@ -1,5 +1,5 @@
 '''
-(c) 2022,2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,21 +33,26 @@ limitations under the License.
 
 import sys
 from os.path import join, dirname, realpath
+import time
 
 Example_dir = dirname(realpath(__file__))  # directory of this file
 modules_dir = join(Example_dir, '..')  # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
 
-from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
-from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-
+from TMSiSDK.device import DeviceInterfaceType
+from TMSiSDK import tmsi_device
 from TMSiFileFormats.file_writer import FileWriter, FileFormat
+from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.device import DeviceInterfaceType, DeviceState
 
 try:
+    # Initialize the SDK
+    tmsi_device.initialize()
+    
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
-    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
+    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
+                                         DeviceInterfaceType.usb)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -57,17 +62,19 @@ try:
         dev.open()
     
         # Create a file writer object to download the onboard recording (if there is any)
-        file_writer = FileWriter(FileFormat.poly5, join(measurements_dir,"example_SD_card_download.poly5"))
+        file_writer = FileWriter(FileFormat.poly5, join(measurements_dir,"example_file_backup.poly5"))
         file_writer.open(dev)
         
         # Get a list of all available recordings
-        recordings_list = dev.get_device_card_file_list()
+        recordings_list = dev.get_device_storage_list()
         if len(recordings_list) <= 0:
             raise(IndexError)
-                
-        # Start downloading the most recent file from the onboard memory
-        dev.download_file_from_device(file_id= recordings_list[-1].RecFileID)
-                
+        
+        # Retrieve the first recording of the device
+        res = list(recordings_list.keys())[0]
+        # Start downloading the file from the onboard memory
+        dev.download_recording_file(res)
+        
         # Close the file writer after completion of the download
         file_writer.close()
         
@@ -81,11 +88,13 @@ except IndexError:
     dev.close()
 
 except TMSiError as e:
-    print(e)
-    
+    file_writer.close()
+    print("!!! TMSiError !!! : ", e.code)
+    if (e.code == TMSiErrorCode.device_error) :
+        print("  => device error : ", hex(dev.status.error))
+        DeviceErrorLookupTable(hex(dev.status.error))
         
 finally:
-    if 'dev' in locals():
-        # Close the connection to the device when the device is opened
-        if dev.get_device_state() == DeviceState.connected:
-            dev.close()
+    # Close the connection to the device when the device is opened
+    if dev.status.state == DeviceState.connected:
+        dev.close()

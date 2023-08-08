@@ -2,9 +2,9 @@
 __pycache__/
 .*/
 dist/
-_docs/build/
+build/
 Output/
 measurements/
 __*.*
+*.rst
 !index.txt
-

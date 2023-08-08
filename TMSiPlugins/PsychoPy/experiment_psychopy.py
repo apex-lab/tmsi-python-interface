@@ -32,7 +32,7 @@ limitations under the License.
 
 '''
 
-from psychopy import sound
+from psychopy import sound,visual,core, logging 
 from numpy.random import choice
 # import random
 import numpy as np

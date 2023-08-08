@@ -34,8 +34,8 @@ import sys
 
 from TMSiSDK import sample_data_server
 from TMSiSDK.device import ChannelType, DeviceInterfaceType
-from TMSiSDK.sdk.device.tmsi_device import TMSiDevice
-from TMSiSDK.sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+from apex_sdk.device.tmsi_device import TMSiDevice
+from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
 
 import numpy as np
 import queue

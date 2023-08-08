@@ -36,23 +36,24 @@ modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
 
-from PySide2.QtWidgets import *
+from PySide2 import QtWidgets
 
+from TMSiSDK import tmsi_device
+from TMSiPlotters.gui import PlottingGUI
+from TMSiPlotters.plotters import PlotterFormat
+from TMSiSDK.device import DeviceInterfaceType, ChannelType, DeviceState
 from TMSiFileFormats.file_writer import FileWriter, FileFormat
+from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiProcessing import filters
 
-from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
-from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-from TMSiSDK.device.devices.saga.saga_API_enums import SagaBaseSampleRate
-from TMSiSDK.device import ChannelType
-
-from TMSiGui.gui import Gui
-from TMSiPlotterHelpers.envelope_plotter_helper import EnvelopeSignalPlotterHelper
 
 try:
+    # Initialise the TMSi-SDK first before starting using it
+    tmsi_device.initialize()
+    
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
-    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
-
+    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
+                                         DeviceInterfaceType.usb)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -62,31 +63,31 @@ try:
         dev.open()
         
         # Set the sample rate of the BIP channel to 4000 Hz
-        dev.set_device_sampling_config(base_sample_rate = SagaBaseSampleRate.Decimal,  channel_type = ChannelType.BIP, channel_divider = 1)
+        dev.config.base_sample_rate = 4000
+        dev.config.set_sample_rate(ChannelType.BIP, 1)
         
         # Enable BIP 01
         BIP_list = [0]
         
         # Retrieve all channels from the device and update which should be enabled
-        ch_list = dev.get_device_channels()
+        ch_list = dev.config.channels
         
         # The counters are used to keep track of the number of BIP channels 
         # that have been encountered while looping over the channel list
         BIP_count = 0
-        enable_channels = []
-        disable_channels = []
         for idx, ch in enumerate(ch_list):
-            if (ch.get_channel_type()== ChannelType.BIP):
+            if (ch.type == ChannelType.BIP):
                 if BIP_count in BIP_list:
-                    enable_channels.append(idx)
+                    ch.enabled = True
                 else:
-                    disable_channels.append(idx)
+                    ch.enabled = False
                 BIP_count += 1
             else :
-                disable_channels.append(idx)
-    
-        dev.set_device_active_channels(enable_channels, True)
-        dev.set_device_active_channels(disable_channels, False)
+                ch.enabled = False
+        dev.config.channels = ch_list
+        
+        # Update sensor information
+        dev.update_sensors()
         
         # Initialise a file-writer class (Poly5-format) and state its file path
         file_writer = FileWriter(FileFormat.poly5, join(measurements_dir,"Example_envelope_plot.poly5"))
@@ -102,13 +103,28 @@ try:
         # Define the handle to the device
         file_writer.open(dev)
         
-        # Initialise the plotter application
-        app = QApplication(sys.argv)
-        plotter_helper = EnvelopeSignalPlotterHelper(device= dev, bpf_fc1 = BPF_lowfc, bpf_fc2 = BPF_highfc, lpf_fc = LPF_fc, order = 1)
-        # Define the GUI object and show it 
-        gui = Gui(plotter_helper=plotter_helper)
-         # Enter the event loop
-        app.exec_()
+        # Check if there is already a plotter application in existence
+        plotter_app = QtWidgets.QApplication.instance()
+        
+        # Initialise the plotter application if there is no other plotter application
+        if not plotter_app:
+            plotter_app = QtWidgets.QApplication(sys.argv)
+        
+        # Define the GUI object and show it
+        plot_window = PlottingGUI(plotter_format = PlotterFormat.envelope,
+                                  figurename = 'A RealTime Envelope plot', 
+                                  device = dev,
+                                   BPF_fc1 = BPF_lowfc,
+                                   BPF_fc2 = BPF_highfc,
+                                   LPF_fc = LPF_fc)
+        plot_window.show()
+        
+        # Enter the event loop
+        plotter_app.exec_()
+        
+        # Quit and delete the Plotter application
+        QtWidgets.QApplication.quit()
+        del plotter_app
         
         # Close the file writer after GUI termination
         file_writer.close()
@@ -117,11 +133,12 @@ try:
         dev.close()
     
 except TMSiError as e:
-    print(e)
-    
+    print("!!! TMSiError !!! : ", e.code)
+    if (e.code == TMSiErrorCode.device_error) :
+        print("  => device error : ", hex(dev.status.error))
+        DeviceErrorLookupTable(hex(dev.status.error))
         
 finally:
-    if 'dev' in locals():
-        # Close the connection to the device when the device is opened
-        if dev.get_device_state() == DeviceState.connected:
-            dev.close()
+    # Close the connection to the device when the device is opened
+    if dev.status.state == DeviceState.connected:
+        dev.close()

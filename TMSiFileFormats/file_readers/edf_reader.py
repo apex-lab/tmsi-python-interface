@@ -52,7 +52,7 @@ class Edf_Reader:
         
         if add_ch_locs:
             # add channel locations from txt file
-            chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/tmsi_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
+            chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
             chLocs.columns=['default_name', 'eeg_name', 'X', 'Y', 'Z']
             # add locations and convert to head size of 95 mm
             for idx, ch in enumerate(mne_object.info['chs']):

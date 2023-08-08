@@ -112,7 +112,7 @@ class Poly5_to_EDF_Converter:
     def _filter_data(self):
         """low-pass filter data of analogue channels to remove offset and drift"""
         if not isinstance(self.f_c, list):
-            print('Data is high-pass filtered with cut-off frequency ', self.f_c, 'Hz')
+            print('Data is low-pass filtered with cut-off frequency ', self.f_c, 'Hz')
             sos = butter(1, self.f_c/(self.fs/2), btype='highpass', output='sos')
             self.data.samples[:self.n_analogue,:] = sosfiltfilt(sos, self.data.samples[:self.n_analogue,:])
         else:
