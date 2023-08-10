@@ -39,10 +39,8 @@ import struct
 import time
 import numpy as np
 
-from TMSiSDK.error import TMSiError, TMSiErrorCode
-from TMSiSDK import sample_data_server
-from apex_sdk.device.tmsi_device import TMSiDevice
-from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+from TMSiSDK.sample_data_server.sample_data_server import SampleDataServer 
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 
 _QUEUE_SIZE = 1000
 
@@ -69,58 +67,12 @@ class Poly5Writer:
         self._date = None
 
     def open(self, device):
-        if isinstance(device, TMSiDevice):
-            self.__open_TMSiDevice(device)
-            return
-
-        self.device = device
-        try:
-            self._fp = open(self.filename, 'wb')
-            self._date = datetime.now()
-            self._sample_rate = device.config.sample_rate
-            self._num_channels = len(device.channels)
-
-            # Calculate nr of sample-sets within one sample-data-block:
-            # This is the nr of sample-sets in 150 milli-seconds or when the
-            # sample-data-block-size exceeds 64kb the it will become the nr of
-            # sample-sets that fit in 64kb
-            self._num_sample_sets_per_sample_data_block = int(self._sample_rate * 0.15)
-            size_one_sample_set = len(self.device.channels) * 4
-            if ((self._num_sample_sets_per_sample_data_block * size_one_sample_set) > 64000):
-                self._num_sample_sets_per_sample_data_block = int(64000 / size_one_sample_set)
-
-            # Write poly5-header for thsi measurement
-            Poly5Writer._writeHeader(self._fp, \
-                                     "measurement", \
-                                     device.config.sample_rate,\
-                                     len(device.channels),\
-                                     len(device.channels),\
-                                     0,
-                                     0,
-                                     self._date)
-            for (i, channel) in enumerate(self.device.channels):
-                Poly5Writer._writeSignalDescription(self._fp, i, channel.name, channel.unit_name)
-                
-            fmt = 'f'*self._num_channels*self._num_sample_sets_per_sample_data_block 
-            self.pack_struct = struct.Struct(fmt)
-
-            sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
-
-            self._sampling_thread = ConsumerThread(self, name='poly5-writer : dev-id-' + str(self.device.id))
-            self._sampling_thread.start()
-        except OSError as e:
-            print(e)
-            raise TMSiError(TMSiErrorCode.file_writer_error)
-        except:
-            raise TMSiError(TMSiErrorCode.file_writer_error)
-
-    def __open_TMSiDevice(self, device):
         self.device = device
         try:
             self._fp = open(self.filename, 'wb')
             self._date = datetime.now()
             self._sample_rate = self.device.get_device_sampling_frequency()
-            self._num_channels = self.device.get_num_channels()
+            self._num_channels = len(self.device.get_device_active_channels())
 
             # Calculate nr of sample-sets within one sample-data-block:
             # This is the nr of sample-sets in 150 milli-seconds or when the
@@ -140,13 +92,13 @@ class Poly5Writer:
                                         0,
                                         0,
                                         self._date)
-            for (i, channel) in enumerate(self.device.get_device_channels()):
+            for (i, channel) in enumerate(self.device.get_device_active_channels()):
                 Poly5Writer._writeSignalDescription(self._fp, i, channel.get_channel_name(), channel.get_channel_unit_name())
                 
             fmt = 'f'*self._num_channels*self._num_sample_sets_per_sample_data_block 
             self.pack_struct = struct.Struct(fmt)
 
-            ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+            SampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
 
             self._sampling_thread = ConsumerThread(self, name='poly5-writer : dev-id-' + str(self.device.get_id()))
             self._sampling_thread.start()
@@ -160,10 +112,8 @@ class Poly5Writer:
         # print("Poly5Writer-close")
         self._sampling_thread.stop_sampling()
         
-        if isinstance(self.device, TMSiDevice):
-            ApexSampleDataServer().unregister_consumer(self.device.get_id(), self.q_sample_sets)
-        else:
-            sample_data_server.unregisterConsumer(self.device.id, self.q_sample_sets)
+        SampleDataServer().unregister_consumer(self.device.get_id(), self.q_sample_sets)
+
 
     ## Write header of a poly5 file.
     #
@@ -266,8 +216,6 @@ class ConsumerThread(threading.Thread):
         self._remaining_samples = np.array([])
 
     def run(self):
-        # print(self.name, " started")   
-        
         while ((self.sampling) or (not self.q_sample_sets.empty())) :
             while not self.q_sample_sets.empty():
                 sd = self.q_sample_sets.get()
@@ -362,10 +310,8 @@ class ConsumerThread(threading.Thread):
         # Go back to end of file
         self._fp.seek(0, os.SEEK_END)
         
-        # print(self.name, " ready, closing file")
         self._fp.close()
         return
 
     def stop_sampling(self):
-        # print(self.name, " stop sampling")
         self.sampling = False;

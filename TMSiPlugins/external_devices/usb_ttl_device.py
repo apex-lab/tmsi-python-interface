@@ -64,10 +64,24 @@ class USB_TTL_device():
             self.ttl_device = serial.Serial(port=com_port, baudrate = 115200, timeout=0.0001)
             # Serial reset, reset COM port
             self.ttl_device.reset_output_buffer()
-            print('Trigger event cable is ready!')
-            # Reset module
+            # Reset module. For robust use, multiple resets are required
+            self.ttl_device.flush()
             self.ttl_device.write(b'RR')
+            
+            # For robust use, close the port and reopen again
+            self.ttl_device.close()
+            self.ttl_device = serial.Serial(port=com_port, baudrate = 115200, timeout=0.0001)
+            # Serial reset, reset COM port
+            self.ttl_device.reset_output_buffer()
+            print('Trigger event cable is ready!')
+            # Reset module multiple times for robust use
+            self.ttl_device.flush()
+            self.ttl_device.write(b'RR')
+            self.ttl_device.flush()
+            self.ttl_device.write(b'RR')
+            # Turn on red LED for 5 seconds
             self.ttl_device.write(b'0xff')
+            self.ttl_device.flush()
             time.sleep(5)
             if self.device.upper() == "SAGA":
                 # Write no bits as to get 0-baseline
@@ -143,4 +157,3 @@ if __name__ == '__main__':
         time.sleep(1)
 
     ttl_module.close()
-    

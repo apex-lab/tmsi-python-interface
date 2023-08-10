@@ -31,7 +31,7 @@ limitations under the License.
 '''
 
 from enum import Enum
-from TMSiSDK.error import TMSiError, TMSiErrorCode
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode
 
 
 class FileFormat(Enum):

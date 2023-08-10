@@ -40,28 +40,45 @@ sys.path.append(modules_dir)
 
 import time
 
-from TMSiSDK import tmsi_device
-from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
-from TMSiSDK.device import DeviceInterfaceType, DeviceState
 from TMSiFileFormats.file_writer import FileWriter, FileFormat
 
+from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.device import ChannelType
+from TMSiSDK.device.devices.saga.saga_API_enums import SagaBaseSampleRate, RefMethod
+from TMSiSDK.device.tmsi_device_enums import MeasurementType
+
 try:
-    # Initialize the TMSi-SDK first before starting using it
-    tmsi_device.initialize()
-
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked, 
-                                         DeviceInterfaceType.usb)
-
+    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
+    
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
         dev = discoveryList[0]
         
         # Open a connection to the SAGA-system
         dev.open()
-    
+        print('Connected to SAGA via docked.')
+
+        # Set sample rate to 500 Hz
+        dev.set_device_sampling_config(base_sample_rate = SagaBaseSampleRate.Decimal,  channel_type = ChannelType.UNI, channel_divider =8)
+
+        # Check whether device is a SAGA 64+ or SAGA 32+ system
+        # Enable all UNI-channels
+        nCh = dev.get_num_channels()
+        if nCh > 64:
+            dev.set_device_active_channels(range(1,65), True)
+        else:
+            dev.set_device_active_channels(range(1,33), True)
+        
+        # When the device samples in average reference method, the CREF channel can be disabled
+        if dev.get_device_references()['reference'] == RefMethod.Average:
+            dev.set_device_active_channels([0], False) 
+
         # Choose the desired DR-DS interface type 
-        dev.config.set_interface_type(DeviceInterfaceType.usb)
+        print('Switch DR-DS interface to optical')
+        dev.set_device_interface(DeviceInterfaceType.optical)
         
         # Close the connection to the device (with the original interface type)
         dev.close()
@@ -70,23 +87,17 @@ try:
         time.sleep(1)
         
     # Discover the device object with the new interface type
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.optical, 
-                                         DeviceInterfaceType.usb)
+    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.optical, ds_interface = DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
+
     if (len(discoveryList) > 0):
         # Create the device object to interface with the SAGA-system.
-        dev = discoveryList[0]
+        dev = discoveryList[-1]
         
         # Find and open the connection to the SAGA-system
         dev.open()
-        
-        # Get the channel list
-        ch_list = dev.config.channels
-        
-        # Enable all channels
-        for idx, ch in enumerate(ch_list):
-            ch.enabled = True
-        dev.config.channels = ch_list
-    
+        print('Connected to SAGA via optical')
+   
         # Before the measurement starts first a file-writer-object must be created and opened.
         # Upon creation specify :
         #   - the data-format 'poly5' to be used
@@ -99,12 +110,14 @@ try:
     
         # Start the measurement and wait 10 seconds. In the mean time the file-writer-instance
         # will capture the sampling data and store it into the specified file in the 'poly5'-data format.
-        dev.start_measurement()
+        print('Start measurement')
+        dev.start_measurement(MeasurementType.SAGA_SIGNAL)
     
         # Wait for 10 seconds
         time.sleep(10)
     
         # Stop the measurement
+        print('Stop measurement')
         dev.stop_measurement()
     
         # Close the file-writer-instance.
@@ -115,12 +128,11 @@ try:
         dev.close()
 
 except TMSiError as e:
-    print("!!! TMSiError !!! : ", e.code)
-    if (e.code == TMSiErrorCode.device_error) :
-        print("  => device error : ", hex(dev.status.error))
-        DeviceErrorLookupTable(hex(dev.status.error))
+    print(e)
+    
         
 finally:
-    # Close the connection to the device when the device is opened
-    if dev.status.state == DeviceState.connected:
-        dev.close()
+    if 'dev' in locals():
+        # Close the connection to the device when the device is opened
+        if dev.get_device_state() == DeviceState.connected:
+            dev.close()

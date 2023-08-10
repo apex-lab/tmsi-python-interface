@@ -42,12 +42,11 @@ import numpy as np
 import pandas as pd
 import os
 
+from TMSiSDK.device.tmsi_device import TMSiDevice
+from TMSiSDK.sample_data_server.sample_data_server import SampleDataServer 
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
 from TMSiSDK.device import ChannelType
-from TMSiSDK.error import TMSiError, TMSiErrorCode
-from TMSiSDK import sample_data_server
-
-from apex_sdk.device.tmsi_device import TMSiDevice
-from apex_sdk.sample_data_server.sample_data_server import SampleDataServer as ApexSampleDataServer 
+from TMSiSDK.device.devices.saga.saga_API_enums import RefMethod
 
 
 from os.path import join, dirname, realpath
@@ -97,83 +96,11 @@ class XdfWriter:
             5. Registers at the sample-data-server and start the sampling-thread
         """
         print("XdfWriter-open")
-        if isinstance(device, TMSiDevice):
-            self.__open_TMSiDevice(device)
-            return
-        
-        self.device = device
-        
-        self._sample_rate = device.config.sample_rate
-        self._num_channels = len(device.channels)
-        
-        now = datetime.now()
-        self._date = now
-        filetime = now.strftime("%Y%m%d_%H%M%S")
-        fileparts=self.filename.split('.')
-        if fileparts[-1]=='xdf' or fileparts[-1]=='Xdf':
-            self.filename='.'.join(fileparts[:-1])+ '-' + filetime + '.xdf'
-        else:
-            self.filename = self.filename + '-' + filetime + '.xdf'
-        
-        #Check for recent impedance values
-        imp_df = None
-        for file in os.listdir(measurements_dir):
-            if ('.txt' in file) and ('Impedances_' in file):
-                Impedance_time = datetime.strptime(file[-19:-4], "%Y%m%d_%H%M%S")
-                if (now-Impedance_time) < timedelta(minutes=2):
-                    imp_file = file
-                    #read impedance data
-                    imp_df = pd.read_csv(join(measurements_dir,file), delimiter = "\t", header = None)
-                    imp_df.columns = ['ch_name', 'impedance', 'unit']
-        if imp_df is not None:
-             print('Included impedance values from file:', imp_file)
-             
-        try:
-            # 1. Open the xdf-file
-            self._fp = open(self.filename, 'wb')
-
-            # 2. Write the magic code 'XDF:'
-            self._fp.write(str.encode("XDF:"))
-            self._write_file_header_chunk()
-
-            # 3. Write the file-header chunk
-            self.device.config
-          
-            self._write_stream_header_chunk(self.device.channels, self._sample_rate, imp_df)
-                
-            # 4. Determine the number of sample-sets within one Samples-chunk:
-            #   This is the number of sample-sets received within 150 milli-seconds or when the
-            #   sample-data-block-size exceeds 64kb it will become the number of sample-sets that fit within 64kb
-            self._num_sample_sets_per_sample_data_block = int(self._sample_rate * 0.15)
-            size_one_sample_set = len(self.device.channels) * 4
-            if ((self._num_sample_sets_per_sample_data_block * size_one_sample_set) > 64000):
-                 self._num_sample_sets_per_sample_data_block = int(64000 / size_one_sample_set)
-                 
-            fmt = 'f'*self._num_channels
-            self.pack_struct = struct.Struct(fmt)     
-
-            # 5. Register at the sample-data-server and start the sampling-thread
-            sample_data_server.registerConsumer(self.device.id, self.q_sample_sets)
-            self._sampling_thread = ConsumerThread(self, name='Xdf-writer : dev-id-' + str(self.device.id))
-            self._sampling_thread.start()
-        except:
-            raise TMSiError(TMSiErrorCode.file_writer_error)
-        
-            
-    def __open_TMSiDevice(self, device):          
-        """ Opens and initializes a xdf file-writer session.
-
-            1. Opens the xdf-file
-            2. Writes the magic code 'XDF:'
-            3. Writes the FileHeader-chunk
-            4. Determines the number of sample sets within one Samples-chunk
-            5. Registers at the sample-data-server and start the sampling-thread
-        """
-        
+      
         self.device = device
         
         self._sample_rate = self.device.get_device_sampling_frequency()
-        self._num_channels = self.device.get_num_channels()
+        self._num_channels = self.device.get_num_active_channels()
         
         now = datetime.now()
         self._date = now
@@ -221,7 +148,7 @@ class XdfWriter:
             self.pack_struct = struct.Struct(fmt)     
 
             # 5. Register at the sample-data-server and start the sampling-thread
-            ApexSampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
+            SampleDataServer().register_consumer(self.device.get_id(), self.q_sample_sets)
             self._sampling_thread = ConsumerThread(self, name='Xdf-writer : dev-id-' + str(self.device.get_id()))
             self._sampling_thread.start()
         except:
@@ -314,10 +241,7 @@ class XdfWriter:
         print("XdfWriter-close")
         self._sampling_thread.stop_sampling()
         
-        if isinstance(self.device, TMSiDevice):
-            ApexSampleDataServer().unregister_consumer(self.device.get_id(), self.q_sample_sets)
-        else:
-            sample_data_server.unregisterConsumer(self.device.id, self.q_sample_sets)
+        SampleDataServer().unregister_consumer(self.device.get_id(), self.q_sample_sets)
 
 
     @staticmethod
@@ -431,7 +355,7 @@ class XdfWriter:
                 imp_df: 'DataFrame' Previously recorded impedances 
         """
         
-        if isinstance(self.device, TMSiDevice):
+        if self.device.get_device_type() == 'APEX':
             self.__write_stream_header_chunk(channels, sample_rate, imp_df)
             return
         
@@ -454,22 +378,23 @@ class XdfWriter:
         de_channels = ET.SubElement(de_desc, 'channels')
 
         #read channel locations
-        chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
+        chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/tmsi_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
         chLocs.columns=['default_name', 'eeg_name', 'X', 'Y', 'Z']
 
         # Meta-data per channel
         i=0  #active channel counter
-        for j in range(len(self.device._config._channels)):
-            if self.device._config._channels[j].def_name==self.device._channels[i].def_name:
+        device_channels = self.device.get_device_channels()
+        for j in range(self.device.get_num_channels()):
+            if device_channels[j].get_channel_name()==channels[i].get_channel_name():
                 # description of one channel, repeated (one for each channel in the time series)
                 item_channel = ET.SubElement(de_channels, 'channel')
                 # channel label
                 item_label =  ET.SubElement(item_channel, 'label')
-                item_label.text = channels[i].name
+                item_label.text = channels[i].get_channel_name()
                 # channel content-type (EEG, EMG, EOG, ...)
                 item_type = ET.SubElement(item_channel, 'type')
                 
-                if (channels[i].type.value == ChannelType.UNI.value):
+                if (channels[i].get_channel_type() == ChannelType.UNI):
                     if not j==0:
                         item_type.text = 'EEG'
                         #channel location
@@ -483,15 +408,15 @@ class XdfWriter:
                             item_z.text=str(95*chLocs['Z'].values[j-1])
                     else:
                         item_type.text = 'CREF'
-                elif (channels[i].type.value == ChannelType.BIP.value):
+                elif (channels[i].get_channel_type() == ChannelType.BIP):
                     item_type.text = 'BIP'
-                elif (channels[i].type.value == ChannelType.AUX.value):
+                elif (channels[i].get_channel_type() == ChannelType.AUX):
                     item_type.text = 'AUX'
-                elif (channels[i].type.value == ChannelType.sensor.value):
+                elif (channels[i].get_channel_type() == ChannelType.sensor):
                     item_type.text = 'sensor'
-                elif (channels[i].type.value == ChannelType.status.value):
+                elif (channels[i].get_channel_type() == ChannelType.status):
                     item_type.text = 'status'
-                elif (channels[i].type.value == ChannelType.counter.value):
+                elif (channels[i].get_channel_type() == ChannelType.counter):
                     item_type.text = 'counter'
                 else:
                     item_type.text = '-'
@@ -499,13 +424,13 @@ class XdfWriter:
                 if imp_df is not None:
                     #channel impedence
                     item_impedance = ET.SubElement(item_channel, 'impedance')
-                    if (channels[i].type.value == ChannelType.UNI.value):
+                    if (channels[i].get_channel_type() == ChannelType.UNI):
                         item_impedance.text=str(imp_df['impedance'].values[j]) 
                     else:
                         item_impedance.text='N.A.'
                 # measurement unit (strongly preferred unit: microvolts)
                 item_unit = ET.SubElement(item_channel, 'unit')
-                item_unit.text = channels[i].unit_name
+                item_unit.text = channels[i].get_channel_unit_name()
                 i+=1
                 
         #Acquisition meta-data
@@ -523,7 +448,7 @@ class XdfWriter:
         item_subtracted =  ET.SubElement(de_reference, 'subtracted')
         item_subtracted.text = 'Yes'
         item_common_average =  ET.SubElement(de_reference, 'common_average')
-        if self.device.config._reference_method:
+        if self.device.get_device_references()['reference'] == RefMethod.Average:
             item_label.text = 'average'
             item_common_average.text = 'Yes'
         else:
@@ -577,7 +502,7 @@ class XdfWriter:
         de_channels = ET.SubElement(de_desc, 'channels')
 
         #read channel locations
-        chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
+        chLocs=pd.read_csv(join(modules_dir,'TMSiSDK/tmsi_resources/EEGchannelsTMSi3D.txt'), sep="\t", header=None)
         chLocs.columns=['default_name', 'eeg_name', 'X', 'Y', 'Z']
 
         #Reference meta-data

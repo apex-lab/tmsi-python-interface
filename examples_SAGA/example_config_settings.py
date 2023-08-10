@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2022, 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,21 +36,18 @@ Example_dir = dirname(realpath(__file__)) # directory of this file
 modules_dir = join(Example_dir, '..') # directory with all modules
 measurements_dir = join(Example_dir, '../measurements') # directory with all measurements
 sys.path.append(modules_dir)
-from PySide2 import QtWidgets
 
-from TMSiSDK import tmsi_device
-from TMSiSDK.device import DeviceInterfaceType, DeviceState, ChannelType, ReferenceMethod, ReferenceSwitch
-from TMSiSDK.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.tmsi_sdk import TMSiSDK, DeviceType, DeviceInterfaceType, DeviceState
+from TMSiSDK.tmsi_errors.error import TMSiError, TMSiErrorCode, DeviceErrorLookupTable
+from TMSiSDK.device.devices.saga.saga_API_enums import SagaBaseSampleRate, RefMethod, AutoRefMethod
+from TMSiSDK.device import ChannelType
 
 
 
 try:
-    # Initialise the TMSi-SDK first before starting using it
-    tmsi_device.initialize()
-
     # Execute a device discovery. This returns a list of device-objects for every discovered device.
-    discoveryList = tmsi_device.discover(tmsi_device.DeviceType.saga, DeviceInterfaceType.docked,
-                                         DeviceInterfaceType.usb)
+    TMSiSDK().discover(dev_type = DeviceType.saga, dr_interface = DeviceInterfaceType.docked, ds_interface = DeviceInterfaceType.usb)
+    discoveryList = TMSiSDK().get_device_list(DeviceType.saga)
 
     if (len(discoveryList) > 0):
         # Get the handle to the first discovered device.
@@ -61,48 +58,48 @@ try:
 
         # Print current device configuation
         print('Current device configuration:')
-        print('Base-sample-rate: \t\t\t{0} Hz'.format(dev.config.base_sample_rate))
-        print('Sample-rate: \t\t\t\t{0} Hz'.format(dev.config.sample_rate))
-        print('Interface-bandwidth: \t\t{0} MHz'.format(dev.config.interface_bandwidth))
-        print('Reference Method: \t\t\t', dev.config.reference_method)
-        print('Sync out configuration: \t', dev.config.get_sync_out_config())
-        print('Triggers:\t\t\t\t\t', dev.config.triggers )
+        print('Base-sample-rate: {0} Hz'.format(dev.get_device_sampling_frequency(detailed=True)['base_sampling_rate']))
+        print('Sample-rate: {0} Hz'.format(dev.get_device_sampling_frequency()))
+        print('Interface-bandwidth: {0} b/s'.format(dev.get_device_bandwidth()))
+        print('Reference Method: ', dev.get_device_references())
+        print('Sync out configuration: ', dev.get_device_sync_out_config())
+        print('Triggers: ', dev.get_device_triggers() )
 
         # Update the different configuration options:
 
-        # Set base sample rate: either 4000 Hz (default)or 4096 Hz.
-        dev.config.base_sample_rate = 4000
+        # Set base sample rate: either 4000 Hz (default, Decimal)or 4096 Hz (Binary).
+        dev.set_device_sampling_config(base_sample_rate = SagaBaseSampleRate.Decimal)
 
         # Set sample rate to 2000 Hz (base_sample_rate/2)
-        dev.config.set_sample_rate(ChannelType.all_types, 2)
+        dev.set_device_sampling_config(channel_type = ChannelType.all_types, channel_divider = 2)
 
         # Specify the reference method and reference switch method that are used during sampling
-        dev.config.reference_method = ReferenceMethod.common,ReferenceSwitch.fixed
+        dev.set_device_references(reference_method = RefMethod.Common, auto_reference_method = AutoRefMethod.Fixed)
 
         # Set the trigger settings
-        dev.config.triggers=True
+        dev.set_device_triggers(True)
 
         # Set the sync out configuration
-        dev.config.set_sync_out_config(marker=False, freq=1, duty_cycle=50)
+        dev.set_device_sync_out_config(marker=False, frequency=1, duty_cycle=50)
 
         # Print new device configuation
         print('\n\nNew device configuration:')
-        print('Base-sample-rate: \t\t\t{0} Hz'.format(dev.config.base_sample_rate))
-        print('Sample-rate: \t\t\t\t{0} Hz'.format(dev.config.sample_rate))
-        print('Reference Method: \t\t\t', dev.config.reference_method)
-        print('Sync out configuration: \t', dev.config.get_sync_out_config())
-        print('Triggers:\t\t\t\t\t', dev.config.triggers )
+        print('Base-sample-rate: {0} Hz'.format(dev.get_device_sampling_frequency(detailed=True)['base_sampling_rate']))
+        print('Sample-rate: {0} Hz'.format(dev.get_device_sampling_frequency()))
+        print('Interface-bandwidth: {0} b/s'.format(dev.get_device_bandwidth()))
+        print('Reference Method: ', dev.get_device_references())
+        print('Sync out configuration: ', dev.get_device_sync_out_config())
+        print('Triggers:', dev.get_device_triggers() )
 
         # Close the connection to the SAGA device
         dev.close()
 
 except TMSiError as e:
-    print("!!! TMSiError !!! : ", e.code)
-    if (e.code == TMSiErrorCode.device_error) :
-        print("  => device error : ", hex(dev.status.error))
-        DeviceErrorLookupTable(hex(dev.status.error))
-
+    print(e)
+    
+        
 finally:
-    # Close the connection to the device when the device is opened
-    if dev.status.state == DeviceState.connected:
-        dev.close()
+    if 'dev' in locals():
+        # Close the connection to the device when the device is opened
+        if dev.get_device_state() == DeviceState.connected:
+            dev.close()

@@ -1,5 +1,5 @@
 '''
-(c) 2022 Twente Medical Systems International B.V., Oldenzaal The Netherlands
+(c) 2023 Twente Medical Systems International B.V., Oldenzaal The Netherlands
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,20 +22,14 @@ limitations under the License.
    #     #     #  #####    #
 
 /**
- * @file ${__init__.py} 
- * @brief Initialisation of the TMSiSDK directory classes.
- *
+ * @file __init__.py 
+ * @brief 
+ * Initialization of the SDK.
  */
 
 
 '''
 
-from os.path import join, dirname, realpath
-
-TMSiSDK_dir = dirname(realpath(__file__)) # directory of this file
-configs_dir = join(TMSiSDK_dir, 'configs')
-
-def get_config(config_name):
-	
-	config_fname = join(configs_dir, config_name + '.xml')
-	return config_fname
+from .tmsi_utilities.tmsi_logger import TMSiLogger, TMSiLoggerActivity
+from .tmsi_utilities.decorators import LogPerformances
+from .tmsi_utilities.mask_type import MaskType

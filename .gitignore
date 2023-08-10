@@ -2,9 +2,10 @@
 __pycache__/
 .*/
 dist/
-build/
+_docs/build/
 Output/
 measurements/
 __*.*
-*.rst
 !index.txt
+!__init__.py
+!TMSiSDK/device/devices/*/measurements/
