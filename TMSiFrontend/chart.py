@@ -32,8 +32,8 @@ limitations under the License.
 import datetime
 import os
 from sys import platform
-if platform == "win32":
-    import ctypes.wintypes
+import ctypes.wintypes
+import ctypes
 
 import pyqtgraph.exporters as exporters
 
@@ -80,7 +80,7 @@ class Chart:
         CSIDL_PERSONAL = 5
         SHGFP_TYPE_CURRENT = 0
         buf= ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-        ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
+        #ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
         return buf.value
 
     def _on_mouse_move(self, evt):
